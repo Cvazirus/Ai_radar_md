@@ -1,0 +1,54 @@
+from typing import Literal
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, model_validator
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
+
+    # General
+    PROJECT_NAME: str = "AI Radar"
+    ENVIRONMENT: Literal["development", "production", "testing"] = "development"
+    LOG_LEVEL: str = "INFO"
+    TIMEZONE: str = "Europe/Moscow"
+
+    # Database
+    DATABASE_URL: str = Field(default="postgresql://postgres:postgres_pwd_123@db:5432/ai_radar_db")
+    
+    # LLM Config
+    LLM_PROVIDER: str = Field(default="openai_compatible")
+    LLM_BASE_URL: str = Field(default="")
+    LLM_API_KEY: str = Field(default="")
+    LLM_MODEL: str = Field(default="")
+    LLM_TIMEOUT_SECONDS: int = Field(default=90)
+    LLM_CONNECT_TIMEOUT_SECONDS: int = Field(default=20)
+    LLM_MAX_RETRIES: int = Field(default=2)
+    LLM_TEMPERATURE: float = Field(default=0.1)
+    LLM_MAX_INPUT_CHARS: int = Field(default=30000)
+    LLM_MAX_OUTPUT_TOKENS: int = Field(default=2500)
+    LLM_ANALYSIS_ENABLED: bool = Field(default=False)
+    LLM_STORE_RAW_RESPONSE: bool = Field(default=True)
+    LLM_PROMPT_VERSION: str = Field(default="phase5-v1")
+    LLM_ANALYSIS_VERSION: str = Field(default="1.0")
+    LLM_SCORE_VERSION: str = Field(default="1.0")
+
+    # Telegram Config
+    TELEGRAM_BOT_TOKEN: str = Field(default="mock-token")
+    TELEGRAM_MODERATION_CHAT_ID: str = Field(default="-1001234567890")
+    TELEGRAM_CHANNEL_ID: str = Field(default="-1009876543210")
+
+    @model_validator(mode="after")
+    def validate_llm_settings(self):
+        if self.LLM_ANALYSIS_ENABLED:
+            if not self.LLM_BASE_URL:
+                raise ValueError("LLM_BASE_URL is required when LLM_ANALYSIS_ENABLED is True")
+            if not self.LLM_API_KEY:
+                raise ValueError("LLM_API_KEY is required when LLM_ANALYSIS_ENABLED is True")
+            if not self.LLM_MODEL:
+                raise ValueError("LLM_MODEL is required when LLM_ANALYSIS_ENABLED is True")
+        return self
+
+settings = Settings()

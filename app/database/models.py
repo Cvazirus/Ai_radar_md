@@ -333,3 +333,28 @@ class ModerationDecisionLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     queue: Mapped["ModerationQueue"] = relationship("ModerationQueue")
+
+
+class PipelineRunStatus(str, enum.Enum):
+    pending = "pending"
+    running = "running"
+    completed = "completed"
+    failed = "failed"
+    cancelled = "cancelled"
+
+
+class PipelineRun(Base):
+    __tablename__ = "pipeline_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    status: Mapped[PipelineRunStatus] = mapped_column(Enum(PipelineRunStatus), default=PipelineRunStatus.pending, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    current_step: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    items_total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    items_processed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    items_failed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    summary_json: Mapped[Optional[dict]] = mapped_column("summary", JSONB, nullable=True)
+

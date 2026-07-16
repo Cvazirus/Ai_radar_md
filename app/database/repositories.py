@@ -1,7 +1,7 @@
 from typing import List, Optional, Dict
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from app.database.models import Source, Item, ItemAnalysis, AnalysisStatus, Publication, CollectionRun, DuplicateRelation, RelationType
+from app.database.models import Source, Item, ItemAnalysis, AnalysisStatus, Publication, CollectionRun, DuplicateRelation, RelationType, ModerationQueue, ModerationDecisionLog, ModerationQueueStatus, ModerationPriority, ModerationDecision
 
 class SourceRepository:
     def __init__(self, db: Session):
@@ -210,3 +210,88 @@ class DuplicateRelationRepository:
             self.db.commit()
             return True
         return False
+
+class ModerationQueueRepository:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def create(self, queue_item: ModerationQueue) -> ModerationQueue:
+        self.db.add(queue_item)
+        self.db.commit()
+        self.db.refresh(queue_item)
+        return queue_item
+
+    def get_by_id(self, queue_id: int) -> Optional[ModerationQueue]:
+        return self.db.query(ModerationQueue).filter(ModerationQueue.id == queue_id).first()
+
+    def get_by_analysis_id(self, analysis_id: int) -> Optional[ModerationQueue]:
+        return self.db.query(ModerationQueue).filter(ModerationQueue.analysis_id == analysis_id).first()
+
+    def list_pending(self, limit: int = 100, offset: int = 0) -> List[ModerationQueue]:
+        return self.db.query(ModerationQueue).filter(
+            ModerationQueue.queue_status == ModerationQueueStatus.pending
+        ).offset(offset).limit(limit).all()
+
+    def list_by_status(self, status: ModerationQueueStatus, limit: int = 100, offset: int = 0) -> List[ModerationQueue]:
+        return self.db.query(ModerationQueue).filter(
+            ModerationQueue.queue_status == status
+        ).offset(offset).limit(limit).all()
+
+    def list_by_priority(self, priority: ModerationPriority, limit: int = 100, offset: int = 0) -> List[ModerationQueue]:
+        return self.db.query(ModerationQueue).filter(
+            ModerationQueue.priority == priority
+        ).offset(offset).limit(limit).all()
+
+    def update_status(self, queue_id: int, status: ModerationQueueStatus, reviewer: Optional[str] = None, notes: Optional[str] = None) -> Optional[ModerationQueue]:
+        queue_item = self.get_by_id(queue_id)
+        if queue_item:
+            queue_item.queue_status = status
+            if reviewer:
+                queue_item.reviewed_by = reviewer
+            if notes:
+                queue_item.review_notes = notes
+            if status == ModerationQueueStatus.in_review:
+                queue_item.review_started_at = func.now()
+            elif status in (ModerationQueueStatus.approved, ModerationQueueStatus.rejected, ModerationQueueStatus.needs_revision):
+                queue_item.reviewed_at = func.now()
+            self.db.add(queue_item)
+            self.db.commit()
+            self.db.refresh(queue_item)
+            return queue_item
+        return None
+
+    def assign(self, queue_id: int, assignee: Optional[str]) -> Optional[ModerationQueue]:
+        queue_item = self.get_by_id(queue_id)
+        if queue_item:
+            queue_item.assigned_to = assignee
+            self.db.add(queue_item)
+            self.db.commit()
+            self.db.refresh(queue_item)
+            return queue_item
+        return None
+
+    def exists_for_analysis(self, analysis_id: int) -> bool:
+        return self.db.query(ModerationQueue).filter(ModerationQueue.analysis_id == analysis_id).count() > 0
+
+    def count_by_status(self, status: ModerationQueueStatus) -> int:
+        return self.db.query(ModerationQueue).filter(ModerationQueue.queue_status == status).count()
+
+class ModerationDecisionLogRepository:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def create(self, log_item: ModerationDecisionLog) -> ModerationDecisionLog:
+        self.db.add(log_item)
+        self.db.commit()
+        self.db.refresh(log_item)
+        return log_item
+
+    def list_for_queue(self, queue_id: int) -> List[ModerationDecisionLog]:
+        return self.db.query(ModerationDecisionLog).filter(
+            ModerationDecisionLog.queue_id == queue_id
+        ).order_by(ModerationDecisionLog.created_at.desc()).all()
+
+    def get_latest(self, queue_id: int) -> Optional[ModerationDecisionLog]:
+        return self.db.query(ModerationDecisionLog).filter(
+            ModerationDecisionLog.queue_id == queue_id
+        ).order_by(ModerationDecisionLog.created_at.desc()).first()

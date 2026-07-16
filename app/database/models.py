@@ -70,6 +70,28 @@ class ReviewStatus(str, enum.Enum):
     confirmed = "confirmed"
     rejected = "rejected"
 
+class ModerationQueueStatus(str, enum.Enum):
+    pending = "pending"
+    in_review = "in_review"
+    approved = "approved"
+    rejected = "rejected"
+    needs_revision = "needs_revision"
+    expired = "expired"
+    cancelled = "cancelled"
+
+class ModerationPriority(str, enum.Enum):
+    low = "low"
+    normal = "normal"
+    high = "high"
+    critical = "critical"
+
+class ModerationDecision(str, enum.Enum):
+    archive = "archive"
+    digest_candidate = "digest_candidate"
+    manual_review = "manual_review"
+    priority_review = "priority_review"
+    blocked = "blocked"
+
 class Source(Base):
     __tablename__ = "sources"
 
@@ -123,6 +145,7 @@ class Item(Base):
     source: Mapped["Source"] = relationship("Source", back_populates="items")
     analyses: Mapped[List["ItemAnalysis"]] = relationship("ItemAnalysis", back_populates="item", cascade="all, delete-orphan")
     publication: Mapped[Optional["Publication"]] = relationship("Publication", back_populates="item", cascade="all, delete-orphan")
+    moderation_queues: Mapped[List["ModerationQueue"]] = relationship("ModerationQueue", back_populates="item", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("ix_items_status", "status"),
@@ -184,6 +207,7 @@ class ItemAnalysis(Base):
     )
 
     item: Mapped["Item"] = relationship("Item", back_populates="analyses")
+    moderation_queue: Mapped[Optional["ModerationQueue"]] = relationship("ModerationQueue", back_populates="analysis", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("ix_item_analysis_item_id", "item_id"),
@@ -255,3 +279,57 @@ class DuplicateRelation(Base):
         Index("ix_duplicate_relations_item_id", "item_id"),
         Index("ix_duplicate_relations_duplicate_of_item_id", "duplicate_of_item_id"),
     )
+
+class ModerationQueue(Base):
+    __tablename__ = "moderation_queue"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("items.id", ondelete="CASCADE"), nullable=False)
+    analysis_id: Mapped[int] = mapped_column(ForeignKey("item_analysis.id", ondelete="CASCADE"), nullable=False, unique=True)
+    queue_status: Mapped[ModerationQueueStatus] = mapped_column(Enum(ModerationQueueStatus), nullable=False)
+    priority: Mapped[ModerationPriority] = mapped_column(Enum(ModerationPriority), nullable=False)
+    decision: Mapped[ModerationDecision] = mapped_column(Enum(ModerationDecision), nullable=False)
+    decision_score: Mapped[Optional[float]] = mapped_column(Numeric(5, 2), nullable=True)
+    decision_reasons: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    blocking_reasons: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    warnings: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    assigned_to: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    reviewed_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    review_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    review_started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), 
+        server_default=func.now(), 
+        onupdate=func.now(), 
+        nullable=False
+    )
+
+    item: Mapped["Item"] = relationship("Item", back_populates="moderation_queues")
+    analysis: Mapped["ItemAnalysis"] = relationship("ItemAnalysis", back_populates="moderation_queue")
+
+    __table_args__ = (
+        Index("ix_moderation_queue_queue_status", "queue_status"),
+        Index("ix_moderation_queue_priority", "priority"),
+        Index("ix_moderation_queue_decision", "decision"),
+        Index("ix_moderation_queue_queued_at", "queued_at"),
+        Index("ix_moderation_queue_item_id", "item_id"),
+        Index("ix_moderation_queue_analysis_id", "analysis_id"),
+    )
+
+class ModerationDecisionLog(Base):
+    __tablename__ = "moderation_decision_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    queue_id: Mapped[int] = mapped_column(ForeignKey("moderation_queue.id", ondelete="CASCADE"), nullable=False)
+    previous_status: Mapped[Optional[ModerationQueueStatus]] = mapped_column(Enum(ModerationQueueStatus), nullable=True)
+    new_status: Mapped[ModerationQueueStatus] = mapped_column(Enum(ModerationQueueStatus), nullable=False)
+    action: Mapped[str] = mapped_column(String(100), nullable=False)
+    actor: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[Optional[dict]] = mapped_column("metadata", JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    queue: Mapped["ModerationQueue"] = relationship("ModerationQueue")

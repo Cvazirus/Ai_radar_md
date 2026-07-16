@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional, List, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from app.config import settings
-from app.database.models import CategoryEnum
+from app.database.models import CategoryEnum, ModerationDecision, ModerationPriority
 
 
 class AnalysisRequest(BaseModel):
@@ -138,3 +138,17 @@ class AnalysisResult(BaseModel):
             seen.add(u)
             cleaned.append(u)
         return cleaned[:10]
+
+class ModerationDecisionResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    item_id: int
+    analysis_id: int
+    decision: ModerationDecision
+    priority: ModerationPriority
+    decision_score: float = Field(ge=0.0, le=10.0)
+    blocking_reasons: List[str] = Field(default_factory=list)
+    decision_reasons: dict = Field(default_factory=dict)
+    warnings: List[str] = Field(default_factory=list)
+    rules_version: str
+    eligible_for_queue: bool

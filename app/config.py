@@ -40,6 +40,18 @@ class Settings(BaseSettings):
     TELEGRAM_MODERATION_CHAT_ID: str = Field(default="-1001234567890")
     TELEGRAM_CHANNEL_ID: str = Field(default="-1009876543210")
 
+    # Moderation Config
+    MODERATION_ENABLED: bool = Field(default=True)
+    MODERATION_RULES_VERSION: str = Field(default="1.0")
+    MODERATION_MAX_AGE_DAYS: int = Field(default=30)
+    MODERATION_DIGEST_MIN_SCORE: float = Field(default=5.0)
+    MODERATION_REVIEW_MIN_SCORE: float = Field(default=7.0)
+    MODERATION_PRIORITY_MIN_SCORE: float = Field(default=8.5)
+    MODERATION_MIN_CONFIDENCE: float = Field(default=0.60)
+    MODERATION_PRIORITY_MIN_CONFIDENCE: float = Field(default=0.75)
+    MODERATION_BATCH_LIMIT: int = Field(default=50)
+    MODERATION_ALLOW_LEGACY_ANALYSIS: bool = Field(default=False)
+
     @model_validator(mode="after")
     def validate_llm_settings(self):
         if self.LLM_ANALYSIS_ENABLED:

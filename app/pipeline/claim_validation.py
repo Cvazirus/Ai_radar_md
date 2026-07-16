@@ -25,6 +25,9 @@ def _normalize(text: str) -> str:
 
 
 def validate_source_claims(raw_text: str, claims: list) -> ClaimValidationResult:
+    if isinstance(claims, dict) and "claims" in claims:
+        claims = claims["claims"]
+
     if not raw_text or not claims:
         return ClaimValidationResult(
             valid_claims=[],
@@ -35,7 +38,10 @@ def validate_source_claims(raw_text: str, claims: list) -> ClaimValidationResult
     result = ClaimValidationResult()
 
     for claim in claims:
-        evidence = getattr(claim, 'evidence_text', None) or ""
+        if isinstance(claim, dict):
+            evidence = claim.get('evidence_text') or ""
+        else:
+            evidence = getattr(claim, 'evidence_text', None) or ""
 
         if not evidence or not evidence.strip():
             result.invalid_claims.append(claim)

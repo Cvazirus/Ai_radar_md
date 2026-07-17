@@ -12,8 +12,9 @@ from app.database.models import (
 )
 from app.services.collection_service import CollectionService
 from app.services.analysis_service import AnalysisService
+from app.services.normalize_service import NormalizeService
+from app.services.validation_service import ValidationService
 from app.services.moderation_service import ModerationService
-from app.pipeline.claim_validation import validate_source_claims
 
 logger = structlog.get_logger()
 
@@ -108,21 +109,8 @@ class PipelineOrchestrator:
             step_start = time.time()
             
             try:
-                # Execute step
-                if step_name == "fetch":
-                    res = self._step_fetch(limit, item_id, only_source_name)
-                elif step_name == "normalize":
-                    res = self._step_normalize(limit, item_id)
-                elif step_name == "analysis":
-                    res = self._step_analysis(limit, item_id)
-                elif step_name == "validation":
-                    res = self._step_validation(limit, item_id)
-                elif step_name == "moderation":
-                    res = self._step_moderation(limit, item_id)
-                elif step_name == "review":
-                    res = self._step_review()
-                else:
-                    res = {"processed": 0, "skipped": 0, "failed": 0, "errors": []}
+                # Execute step - all business logic delegated to services
+                res = self._execute_step(step_name, limit, item_id, only_source_name)
 
                 duration_ms = int((time.time() - step_start) * 1000)
                 step_result = {
@@ -219,14 +207,29 @@ class PipelineOrchestrator:
 
         return summary
 
+    def _execute_step(self, step_name: str, limit: int, item_id: Optional[int], only_source_name: Optional[str] = None) -> Dict[str, Any]:
+        """Delegate step execution to appropriate service."""
+        if step_name == "fetch":
+            return self._step_fetch(limit, item_id, only_source_name)
+        elif step_name == "normalize":
+            return self._step_normalize(limit, item_id)
+        elif step_name == "analysis":
+            return self._step_analysis(limit, item_id)
+        elif step_name == "validation":
+            return self._step_validation(limit, item_id)
+        elif step_name == "moderation":
+            return self._step_moderation(limit, item_id)
+        elif step_name == "review":
+            return self._step_review()
+        else:
+            return {"processed": 0, "skipped": 0, "failed": 0, "errors": []}
+
     def _run_dry_run(self, limit: int, start_idx: int, end_idx: int, item_id: Optional[int], only_source_name: Optional[str] = None) -> Dict[str, Any]:
         step_results = {}
         for idx in range(start_idx, end_idx + 1):
             step_name = self.STEPS[idx]
             
-            # Count prospective items
             if step_name == "fetch":
-                # Count active RSS sources
                 from app.database.models import Source
                 query = self.db.query(Source).filter(Source.source_type == "rss", Source.enabled == True)
                 if only_source_name:
@@ -256,8 +259,6 @@ class PipelineOrchestrator:
                 processed = min(count, limit) if count > 0 else 0
                 skipped = max(0, count - limit)
             elif step_name == "moderation":
-                # Successful analyses with no moderation queue
-                from sqlalchemy import select
                 moderated_ids = select(ModerationQueue.analysis_id)
                 query = self.db.query(ItemAnalysis).filter(
                     ItemAnalysis.status == AnalysisStatus.success,
@@ -294,13 +295,10 @@ class PipelineOrchestrator:
             "steps": step_results
         }
 
-    # Step runners
+    # Step runners - all delegate to services
     def _step_fetch(self, limit: int, item_id: Optional[int], only_source_name: Optional[str] = None) -> Dict[str, Any]:
-        # Fetch calls CollectionService
         if item_id:
-            # Skip global RSS fetch for target item
             return {"processed": 0, "skipped": 1, "failed": 0, "errors": []}
-            
         service = CollectionService(self.db)
         stats = service.run_rss_collection(only_source_name=only_source_name)
         return {
@@ -311,27 +309,8 @@ class PipelineOrchestrator:
         }
 
     def _step_normalize(self, limit: int, item_id: Optional[int]) -> Dict[str, Any]:
-        query = self.db.query(Item).filter(Item.status == ItemStatus.collected)
-        if item_id:
-            query = query.filter(Item.id == item_id)
-            
-        items = query.limit(limit).all()
-        processed = 0
-        failed = 0
-        errors = []
-        
-        for item in items:
-            try:
-                # Apply normalization status transition
-                item.status = ItemStatus.normalized
-                self.db.add(item)
-                processed += 1
-            except Exception as e:
-                failed += 1
-                errors.append(f"Normalize failed for item {item.id}: {str(e)}")
-                
-        self.db.commit()
-        return {"processed": processed, "skipped": 0, "failed": failed, "errors": errors}
+        service = NormalizeService(self.db)
+        return service.normalize_batch(limit=limit, item_id=item_id)
 
     def _step_analysis(self, limit: int, item_id: Optional[int]) -> Dict[str, Any]:
         service = AnalysisService(self.db)
@@ -346,7 +325,6 @@ class PipelineOrchestrator:
                 return {"processed": 1, "skipped": 0, "failed": 0, "errors": []}
             except Exception as e:
                 return {"processed": 0, "skipped": 0, "failed": 1, "errors": [str(e)]}
-        
         stats = service.analyze_batch(limit=limit)
         return {
             "processed": stats.get("success", 0),
@@ -356,40 +334,12 @@ class PipelineOrchestrator:
         }
 
     def _step_validation(self, limit: int, item_id: Optional[int]) -> Dict[str, Any]:
-        # Validate claims of the latest analyses
-        query = self.db.query(ItemAnalysis).filter(ItemAnalysis.status == AnalysisStatus.success)
-        if item_id:
-            query = query.filter(ItemAnalysis.item_id == item_id)
-            
-        analyses = query.order_by(desc(ItemAnalysis.id)).limit(limit).all()
-        processed = 0
-        failed = 0
-        errors = []
-        
-        for analysis in analyses:
-            try:
-                item = analysis.item
-                if not item:
-                    continue
-                claims = analysis.source_claims
-                if isinstance(claims, dict) and "claims" in claims:
-                    claims = claims["claims"]
-                res = validate_source_claims(item.raw_text or item.title, claims)
-                if res.invalid_claims:
-                    failed += 1
-                    errors.append(f"Validation failed for analysis {analysis.id}: {len(res.invalid_claims)} invalid claims")
-                else:
-                    processed += 1
-            except Exception as e:
-                failed += 1
-                errors.append(f"Validation check failed for analysis {analysis.id}: {str(e)}")
-                
-        return {"processed": processed, "skipped": 0, "failed": failed, "errors": errors}
+        service = ValidationService(self.db)
+        return service.validate_batch(limit=limit, item_id=item_id)
 
     def _step_moderation(self, limit: int, item_id: Optional[int]) -> Dict[str, Any]:
         service = ModerationService(self.db)
         if item_id:
-            # Find latest analysis for the target item
             analysis = self.db.query(ItemAnalysis).filter(
                 ItemAnalysis.item_id == item_id,
                 ItemAnalysis.status == AnalysisStatus.success
@@ -403,7 +353,6 @@ class PipelineOrchestrator:
                 return {"processed": 0, "skipped": 1, "failed": 0, "errors": []}
             except Exception as e:
                 return {"processed": 0, "skipped": 0, "failed": 1, "errors": [str(e)]}
-
         results = service.moderate_batch(limit=limit)
         return {
             "processed": len(results),
@@ -413,6 +362,5 @@ class PipelineOrchestrator:
         }
 
     def _step_review(self) -> Dict[str, Any]:
-        # Count pending items in queue
         count = self.db.query(ModerationQueue).filter(ModerationQueue.queue_status == ModerationQueueStatus.pending).count()
         return {"processed": count, "skipped": 0, "failed": 0, "errors": []}

@@ -1,21 +1,18 @@
 import pytest
-from unittest.mock import MagicMock, patch
-from datetime import datetime, timezone
-
-from app.database.models import (
-    Item, ItemStatus, ItemAnalysis, AnalysisStatus, PipelineRun,
-    PipelineRunStatus, ModerationQueue, ModerationQueueStatus
-)
+from unittest.mock import MagicMock, patch, PropertyMock
+from sqlalchemy.orm import Session
 from app.services.pipeline_orchestrator import PipelineOrchestrator
+from app.database.models import (
+    PipelineRun, PipelineRunStatus, Item, ItemStatus, ItemAnalysis,
+    AnalysisStatus, ModerationQueue, ModerationQueueStatus
+)
 
 
 @pytest.fixture
 def mock_db():
-    db = MagicMock()
-    # Mock chain returns for query counts
-    db.query.return_value.filter.return_value.count.return_value = 5
-    db.query.return_value.filter.return_value.order_by.return_value.count.return_value = 5
-    db.query.return_value.filter.return_value.limit.return_value.count.return_value = 5
+    db = MagicMock(spec=Session)
+    db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
+    db.query.return_value.filter.return_value.count.return_value = 0
     return db
 
 
@@ -59,9 +56,10 @@ def test_invalid_steps(orchestrator: PipelineOrchestrator):
 @patch("app.services.pipeline_orchestrator.CollectionService")
 @patch("app.services.pipeline_orchestrator.AnalysisService")
 @patch("app.services.pipeline_orchestrator.ModerationService")
-@patch("app.services.pipeline_orchestrator.validate_source_claims")
+@patch("app.services.pipeline_orchestrator.NormalizeService")
+@patch("app.services.pipeline_orchestrator.ValidationService")
 def test_full_pipeline_run(
-    mock_validate, mock_mod_service, mock_anal_service, mock_col_service,
+    mock_val_service, mock_norm_service, mock_mod_service, mock_anal_service, mock_col_service,
     orchestrator: PipelineOrchestrator, mock_db
 ):
     # Setup mocks
@@ -69,32 +67,22 @@ def test_full_pipeline_run(
     mock_col.run_rss_collection.return_value = {"items_created": 5, "items_skipped": 0, "sources_failed": 0}
     mock_col_service.return_value = mock_col
 
+    mock_norm = MagicMock()
+    mock_norm.normalize_batch.return_value = {"processed": 5, "skipped": 0, "failed": 0, "errors": []}
+    mock_norm_service.return_value = mock_norm
+
     mock_anal = MagicMock()
     mock_anal.analyze_batch.return_value = {"success": 3, "skipped": 2, "failed": 0, "invalid": 0}
     mock_anal_service.return_value = mock_anal
+
+    mock_val = MagicMock()
+    mock_val.validate_batch.return_value = {"processed": 3, "skipped": 0, "failed": 0, "errors": []}
+    mock_val_service.return_value = mock_val
 
     mock_mod = MagicMock()
     mock_mod.moderate_batch.return_value = [MagicMock()]
     mock_mod_service.return_value = mock_mod
 
-    mock_validate.return_value = MagicMock(invalid_claims=[])
-
-    # Setup database query mock
-    item1 = MagicMock(spec=Item)
-    item1.id = 1
-    item1.status = ItemStatus.collected
-    
-    analysis1 = MagicMock(spec=ItemAnalysis)
-    analysis1.id = 1
-    analysis1.status = AnalysisStatus.success
-    analysis1.source_claims = {"claims": []}
-    analysis1.item = item1
-
-    # Mock query chain: query(Item).filter().limit().all()
-    mock_db.query.return_value.filter.return_value.limit.return_value.all.return_value = [item1]
-    # Mock query for validation
-    mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [analysis1]
-    
     # Mock queue count
     mock_db.query.return_value.filter.return_value.count.return_value = 2
 

@@ -1,4 +1,3 @@
-import time
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 import structlog
@@ -44,7 +43,7 @@ class PublicationService:
                 score_str = f"{float(total_score):.2f}"
             except (TypeError, ValueError):
                 score_str = "0.00"
-            
+
             return (
                 f"📢 *{item.title}*\n\n"
                 f"📝 {summary_ru}\n\n"
@@ -61,8 +60,7 @@ class PublicationService:
     def prepare_publication(self, item: Item, dry_run: bool = False) -> Publication:
         """Создать публикацию в статусе draft."""
         telegram_text = self.format_telegram_text(item)
-        
-        # Check if already exists
+
         existing = self.pub_repo.get(item.id)
         if existing:
             return existing
@@ -72,24 +70,17 @@ class PublicationService:
             telegram_text=telegram_text,
             status=PublicationStatus.draft
         )
-        
+
         if not dry_run:
             self.db.add(pub)
             self.db.commit()
             self.db.refresh(pub)
-            
+
         return pub
 
     def publish_publication(self, pub: Publication, dry_run: bool = False) -> bool:
-        """
-        Выполнить публикацию (симуляция).
-        Возвращает True в случае успеха, False при ошибке.
-        """
-        # Transition: draft -> ready
-        if pub.status == PublicationStatus.draft:
-            pub.status = PublicationStatus.ready
-            if not dry_run:
-                self.db.commit()
+        """Опубликовать материал через Telegram."""
+        from app.publishers.telegram import TelegramPublisher
 
         # Transition: ready -> publishing
         pub.status = PublicationStatus.publishing
@@ -98,29 +89,43 @@ class PublicationService:
 
         logger.info("publication_started", item_id=pub.item_id, status=str(pub.status), dry_run=dry_run)
 
-        # Симуляция внешней интеграции (Telegram API)
-        time.sleep(0.01)
+        if dry_run:
+            logger.info("publication_dry_run", item_id=pub.item_id)
+            return True
 
-        # Условие для симуляции падения публикации (для тестов)
-        if "simulate_failure" in pub.telegram_text:
-            logger.error("publication_failed", item_id=pub.item_id, error="Simulated API failure", dry_run=dry_run)
-            pub.status = PublicationStatus.failed
-            if not dry_run:
+        # Real Telegram publishing
+        publisher = TelegramPublisher()
+        try:
+            result = publisher.send_html(pub.telegram_text)
+
+            if result.success:
+                logger.info(
+                    "publication_completed",
+                    item_id=pub.item_id,
+                    message_id=result.message_id,
+                    status="published",
+                )
+                pub.status = PublicationStatus.published
+                pub.published_at = datetime.now(timezone.utc)
+                pub.telegram_message_id = result.message_id
+
+                item = self.item_repo.get(pub.item_id)
+                if item:
+                    item.status = ItemStatus.published
                 self.db.commit()
-            return False
-
-        # Успешная симуляция публикации
-        logger.info("publication_completed", item_id=pub.item_id, status="published", dry_run=dry_run)
-        pub.status = PublicationStatus.published
-        pub.published_at = datetime.now(timezone.utc)
-        
-        if not dry_run:
-            item = self.item_repo.get(pub.item_id)
-            if item:
-                item.status = ItemStatus.published
-            self.db.commit()
-            
-        return True
+                return True
+            else:
+                logger.error(
+                    "publication_failed",
+                    item_id=pub.item_id,
+                    error=result.error,
+                    error_code=result.error_code,
+                )
+                pub.status = PublicationStatus.failed
+                self.db.commit()
+                return False
+        finally:
+            publisher.close()
 
     def publish_batch(
         self,
@@ -128,24 +133,23 @@ class PublicationService:
         item_id: Optional[int] = None,
         resume: bool = False,
         retry_failed: bool = False,
-        dry_run: bool = False
+        dry_run: bool = False,
     ) -> Dict[str, Any]:
         """Пакетная публикация утвержденных материалов."""
         stats = {"processed": 0, "failed": 0, "skipped": 0, "resumed": 0}
-        
+
         logger.info(
             "publication_batch_started",
             limit=limit,
             item_id=item_id,
             resume=resume,
             retry_failed=retry_failed,
-            dry_run=dry_run
+            dry_run=dry_run,
         )
 
         publications_to_process = []
 
         if retry_failed:
-            # Обработка только failed публикаций
             query = self.db.query(Publication).filter(Publication.status == PublicationStatus.failed)
             if item_id:
                 query = query.filter(Publication.item_id == item_id)
@@ -155,7 +159,6 @@ class PublicationService:
                 stats["resumed"] += 1
 
         elif resume:
-            # Продолжение незавершенных публикаций (draft, ready, publishing)
             query = self.db.query(Publication).filter(
                 Publication.status.in_([PublicationStatus.draft, PublicationStatus.ready, PublicationStatus.publishing])
             )
@@ -167,15 +170,14 @@ class PublicationService:
                 stats["resumed"] += 1
 
         else:
-            # Обычный новый проход: получение утвержденных материалов
             approved_items = self.get_approved_items()
             if item_id:
                 approved_items = [i for i in approved_items if i.id == item_id]
-                
+
             for item in approved_items:
                 if len(publications_to_process) >= limit:
                     break
-                    
+
                 existing_pub = self.pub_repo.get(item.id)
                 if existing_pub:
                     if existing_pub.status == PublicationStatus.published:
@@ -183,16 +185,13 @@ class PublicationService:
                         stats["skipped"] += 1
                         continue
                     else:
-                        # Существующий черновик/ошибка, пропускаем если не указан resume/retry
                         logger.info("publication_skipped", item_id=item.id, reason="existing_unfinished_publication")
                         stats["skipped"] += 1
                         continue
-                
-                # Создаем новую публикацию
+
                 pub = self.prepare_publication(item, dry_run=dry_run)
                 publications_to_process.append(pub)
 
-        # Выполняем публикацию
         for pub in publications_to_process:
             try:
                 success = self.publish_publication(pub, dry_run=dry_run)

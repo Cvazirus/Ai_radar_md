@@ -16,6 +16,7 @@ class ItemStatus(str, enum.Enum):
     rejected = "rejected"
     pending_review = "pending_review"
     approved = "approved"
+    manual_review_approved = "manual_review_approved"
     published = "published"
     failed = "failed"
 
@@ -24,8 +25,11 @@ class PublicationStatus(str, enum.Enum):
     pending_review = "pending_review"
     approved = "approved"
     rejected = "rejected"
+    ready = "ready"
+    publishing = "publishing"
     published = "published"
     failed = "failed"
+    cancelled = "cancelled"
 
 class CategoryEnum(str, enum.Enum):
     news = "news"
@@ -74,6 +78,7 @@ class ModerationQueueStatus(str, enum.Enum):
     pending = "pending"
     in_review = "in_review"
     approved = "approved"
+    manual_review_approved = "manual_review_approved"
     rejected = "rejected"
     needs_revision = "needs_revision"
     expired = "expired"

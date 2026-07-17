@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     TIMEZONE: str = "Europe/Moscow"
 
     # Database
-    DATABASE_URL: str = Field(default="postgresql://postgres:postgres_pwd_123@db:5432/ai_radar_db")
+    DATABASE_URL: str = Field(default="postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}")
     
     # LLM Config
     LLM_PROVIDER: str = Field(default="openai_compatible")

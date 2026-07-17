@@ -49,3 +49,8 @@ docker-compose.override.yml
 *.tmp
 *.bak
 *.orig
+
+# Database backups
+*.sql
+*.dump
+*.dump.*

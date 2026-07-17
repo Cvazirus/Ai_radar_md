@@ -31,7 +31,8 @@ class PipelineOrchestrator:
         to_step: Optional[str] = None,
         resume: bool = False,
         item_id: Optional[int] = None,
-        dry_run: bool = False
+        dry_run: bool = False,
+        only_source_name: Optional[str] = None
     ) -> Dict[str, Any]:
         run_id = f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:4]}"
         
@@ -70,7 +71,7 @@ class PipelineOrchestrator:
 
         # 3. Dry run reporting
         if dry_run:
-            return self._run_dry_run(limit, start_idx, end_idx, item_id)
+            return self._run_dry_run(limit, start_idx, end_idx, item_id, only_source_name)
 
         # 4. Initialize PipelineRun in DB
         if not pipeline_run:
@@ -109,7 +110,7 @@ class PipelineOrchestrator:
             try:
                 # Execute step
                 if step_name == "fetch":
-                    res = self._step_fetch(limit, item_id)
+                    res = self._step_fetch(limit, item_id, only_source_name)
                 elif step_name == "normalize":
                     res = self._step_normalize(limit, item_id)
                 elif step_name == "analysis":
@@ -218,7 +219,7 @@ class PipelineOrchestrator:
 
         return summary
 
-    def _run_dry_run(self, limit: int, start_idx: int, end_idx: int, item_id: Optional[int]) -> Dict[str, Any]:
+    def _run_dry_run(self, limit: int, start_idx: int, end_idx: int, item_id: Optional[int], only_source_name: Optional[str] = None) -> Dict[str, Any]:
         step_results = {}
         for idx in range(start_idx, end_idx + 1):
             step_name = self.STEPS[idx]
@@ -227,7 +228,10 @@ class PipelineOrchestrator:
             if step_name == "fetch":
                 # Count active RSS sources
                 from app.database.models import Source
-                count = self.db.query(Source).filter(Source.source_type == "rss", Source.enabled == True).count()
+                query = self.db.query(Source).filter(Source.source_type == "rss", Source.enabled == True)
+                if only_source_name:
+                    query = query.filter(Source.name == only_source_name)
+                count = query.count()
                 processed = count
                 skipped = 0
             elif step_name == "normalize":
@@ -291,14 +295,14 @@ class PipelineOrchestrator:
         }
 
     # Step runners
-    def _step_fetch(self, limit: int, item_id: Optional[int]) -> Dict[str, Any]:
+    def _step_fetch(self, limit: int, item_id: Optional[int], only_source_name: Optional[str] = None) -> Dict[str, Any]:
         # Fetch calls CollectionService
         if item_id:
             # Skip global RSS fetch for target item
             return {"processed": 0, "skipped": 1, "failed": 0, "errors": []}
             
         service = CollectionService(self.db)
-        stats = service.run_rss_collection()
+        stats = service.run_rss_collection(only_source_name=only_source_name)
         return {
             "processed": stats.get("items_created", 0),
             "skipped": stats.get("items_skipped", 0),

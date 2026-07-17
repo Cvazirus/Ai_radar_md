@@ -1,3 +1,4 @@
+from typing import Optional
 from datetime import datetime, timezone
 import structlog
 from sqlalchemy.orm import Session
@@ -14,12 +15,15 @@ class CollectionService:
         self.run_repo = CollectionRunRepository(db)
         self.item_service = ItemService(db)
 
-    def run_rss_collection(self) -> dict:
+    def run_rss_collection(self, only_source_name: Optional[str] = None) -> dict:
         # 1. Получаем активные RSS источники
-        sources = self.db.query(Source).filter(
+        query = self.db.query(Source).filter(
             Source.source_type == "rss",
             Source.enabled == True
-        ).all()
+        )
+        if only_source_name:
+            query = query.filter(Source.name == only_source_name)
+        sources = query.all()
         
         total_stats = {
             "sources_total": len(sources),

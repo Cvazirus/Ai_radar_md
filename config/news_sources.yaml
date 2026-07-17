@@ -1,0 +1,155 @@
+# AI Radar — News Sources Registry
+# Each source has: id, name, url, feed_url, language, source_type, enabled, priority, tags
+
+sources:
+  # === International ===
+  - id: openai_blog
+    name: OpenAI Blog
+    url: https://openai.com/blog
+    feed_url: https://openai.com/blog/rss.xml
+    language: en
+    source_type: rss
+    enabled: true
+    priority: 1
+    tags: [official, model_release, api]
+
+  - id: anthropic_news
+    name: Anthropic News
+    url: https://www.anthropic.com/news
+    feed_url: https://www.anthropic.com/rss.xml
+    language: en
+    source_type: rss
+    enabled: true
+    priority: 1
+    tags: [official, model_release, safety]
+
+  - id: google_ai_blog
+    name: Google AI Blog
+    url: https://blog.google/technology/ai/
+    feed_url: https://blog.google/technology/ai/rss/
+    language: en
+    source_type: rss
+    enabled: true
+    priority: 1
+    tags: [official, model_release, research]
+
+  - id: huggingface_blog
+    name: Hugging Face Blog
+    url: https://huggingface.co/blog
+    feed_url: https://huggingface.co/blog/feed.xml
+    language: en
+    source_type: rss
+    enabled: true
+    priority: 1
+    tags: [open_source, models, tools]
+
+  - id: arxiv_cs_ai
+    name: arXiv cs.AI
+    url: https://arxiv.org/list/cs.AI/recent
+    feed_url: http://export.arxiv.org/rss/cs.AI
+    language: en
+    source_type: rss
+    enabled: true
+    priority: 2
+    tags: [research, papers, ai]
+
+  - id: arxiv_cs_cl
+    name: arXiv cs.CL
+    url: https://arxiv.org/list/cs.CL/recent
+    feed_url: http://export.arxiv.org/rss/cs.CL
+    language: en
+    source_type: rss
+    enabled: true
+    priority: 2
+    tags: [research, papers, nlp]
+
+  - id: arxiv_cs_lg
+    name: arXiv cs.LG
+    url: https://arxiv.org/list/cs.LG/recent
+    feed_url: http://export.arxiv.org/rss/cs.LG
+    language: en
+    source_type: rss
+    enabled: true
+    priority: 2
+    tags: [research, papers, ml]
+
+  - id: hackernews_ai
+    name: Hacker News AI
+    url: https://news.ycombinator.com
+    feed_url: https://hnrss.org/newest?q=AI+LLM+ML&points=50
+    language: en
+    source_type: rss
+    enabled: true
+    priority: 2
+    tags: [community, trending, discussion]
+
+  - id: github_trending_ai
+    name: GitHub Trending AI
+    url: https://github.com/trending
+    feed_url: https://mshibanami.github.io/GitHubTrendingRSS/daily/all.day.xml
+    language: en
+    source_type: rss
+    enabled: true
+    priority: 2
+    tags: [open_source, github, trending]
+
+  - id: paperswithcode
+    name: Papers with Code
+    url: https://paperswithcode.com
+    feed_url: https://paperswithcode.com/rss
+    language: en
+    source_type: rss
+    enabled: true
+    priority: 2
+    tags: [research, papers, benchmarks]
+
+  # === Russian ===
+  - id: habr_ai
+    name: Habr AI
+    url: https://habr.com/ru/hub/artificial_intelligence/
+    feed_url: https://habr.com/ru/rss/hub/artificial_intelligence/all/
+    language: ru
+    source_type: rss
+    enabled: true
+    priority: 1
+    tags: [russian, ai, articles]
+
+  - id: habr_ml
+    name: Habr ML
+    url: https://habr.com/ru/hub/machine_learning/
+    feed_url: https://habr.com/ru/rss/hub/machine_learning/all/
+    language: ru
+    source_type: rss
+    enabled: true
+    priority: 1
+    tags: [russian, ml, articles]
+
+  - id: habr_llm
+    name: Habr LLM
+    url: https://habr.com/ru/hub/large_language_models/
+    feed_url: https://habr.com/ru/rss/hub/large_language_models/all/
+    language: ru
+    source_type: rss
+    enabled: true
+    priority: 1
+    tags: [russian, llm, articles]
+
+  - id: opennet_ai
+    name: OpenNET AI
+    url:https://www.opennet.ru/cgi-bin/opennet/ks.cgi?mask=ai
+    feed_url: https://www.opennet.ru/cgi-bin/opennet/ks.cgi?mask=ai&rss=1
+    language: ru
+    source_type: rss
+    enabled: true
+    priority: 2
+    tags: [russian, ai, news]
+
+  - id: tproger_ai
+    name: Tproger AI
+    url: https://tproger.ru/tag/ai/
+    feed_url: https://tproger.ru/feed/
+    language: ru
+    source_type: rss
+    enabled: true
+    priority: 2
+    tags: [russian, ai, articles]

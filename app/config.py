@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     MODERATION_BATCH_LIMIT: int = Field(default=50)
     MODERATION_ALLOW_LEGACY_ANALYSIS: bool = Field(default=False)
 
+    # Scheduler Config
+    SCHEDULER_ENABLED: bool = Field(default=True)
+    SCHEDULER_INTERVAL_MINUTES: int = Field(default=60)
+    SCHEDULER_MAX_PARALLEL_RUNS: int = Field(default=1)
+    SCHEDULER_LOCK_TIMEOUT: int = Field(default=1800)
+    SCHEDULER_DEFAULT_LIMIT: int = Field(default=10)
+
     @model_validator(mode="after")
     def validate_llm_settings(self):
         if self.LLM_ANALYSIS_ENABLED:

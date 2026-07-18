@@ -89,6 +89,14 @@ python scripts/review_feedback.py --stats
 
 Ручная проверка: опубликуйте тестовый материал, убедитесь в четырёх inline-кнопках, затем нажмите `Нравится`, `Неинтересно`, дважды `Избранное` и `Скрыть`. Проверьте, что `like` заменяется на `dislike`, избранное переключается, скрытие не удаляет запись feedback, а повторная доставка одного Telegram update не меняет состояние второй раз.
 
+## Автоматическое решение модерации
+
+По умолчанию выключено (`MODERATION_AUTO_DECISION_ENABLED=false`). При включении в `true`: каждый материал сразу после расчёта правил модерации (`app/pipeline/moderation_rules.py`) автоматически переводится в `approved` (если решение не `blocked`) или `rejected` (если `blocked`) — без ожидания ручного решения в `review_moderation.py`. Одобренные материалы становятся доступны `PublicationService` для публикации так же, как если бы их одобрил человек. Каждое авто-решение пишется отдельной записью в `ModerationDecisionLog` с `actor="system-auto-policy"` — полная история сохраняется, как и при ручном ревью.
+
+## Автоматическая публикация из шедулера
+
+По умолчанию выключено (`SCHEDULER_AUTO_PUBLISH_ENABLED=false`). При включении в `true`: после каждого прохода `PipelineOrchestrator` (fetch → normalize → analysis → validation → moderation → review) `SchedulerService` сам вызывает `PublicationService.publish_batch(limit=SCHEDULER_PUBLISH_LIMIT)` — то есть уже одобренные материалы (вручную или через `MODERATION_AUTO_DECISION_ENABLED`) реально уходят в Telegram-канал без отдельного запуска `scripts/run_publication.py`. В `--dry-run` пайплайна публикация не запускается. Ошибка публикации логируется и не прерывает шедулер — следующий цикл пройдёт как обычно.
+
 ---
 
 ## Архитектурные решения (Этап 5.1)

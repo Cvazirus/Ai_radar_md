@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     MODERATION_MIN_CONFIDENCE: float = Field(default=0.60)
     MODERATION_PRIORITY_MIN_CONFIDENCE: float = Field(default=0.75)
     MODERATION_BATCH_LIMIT: int = Field(default=50)
+    MODERATION_AUTO_DECISION_ENABLED: bool = Field(default=False)
     MODERATION_ALLOW_LEGACY_ANALYSIS: bool = Field(default=False)
 
     # Scheduler Config
@@ -63,6 +64,8 @@ class Settings(BaseSettings):
     SCHEDULER_MAX_PARALLEL_RUNS: int = Field(default=1)
     SCHEDULER_LOCK_TIMEOUT: int = Field(default=1800)
     SCHEDULER_DEFAULT_LIMIT: int = Field(default=10)
+    SCHEDULER_AUTO_PUBLISH_ENABLED: bool = Field(default=False)
+    SCHEDULER_PUBLISH_LIMIT: int = Field(default=10)
 
     @model_validator(mode="after")
     def validate_llm_settings(self):

@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch, mock_open
 import threading
 import time
 
+from app.config import settings
 from app.database.models import Source, PipelineRun, PipelineRunStatus
 from app.services.scheduler_service import SchedulerService, PipelineLockError
 
@@ -110,7 +111,56 @@ def test_daemon_continues_after_error(mock_run_pipeline, scheduler):
     
     time.sleep(0.5)
     assert scheduler._is_running is True
-    
+
     scheduler.stop()
     t.join(timeout=2)
     assert scheduler._is_running is False
+
+
+@patch("app.services.scheduler_service.PublicationService")
+@patch("app.services.scheduler_service.PipelineOrchestrator.run_pipeline")
+def test_auto_publish_disabled_by_default(mock_run_pipeline, mock_publication_cls, scheduler, monkeypatch):
+    monkeypatch.setattr(settings, "SCHEDULER_AUTO_PUBLISH_ENABLED", False)
+    mock_run_pipeline.return_value = {"status": "completed"}
+
+    scheduler.run_once(limit=5)
+
+    mock_publication_cls.assert_not_called()
+
+
+@patch("app.services.scheduler_service.PublicationService")
+@patch("app.services.scheduler_service.PipelineOrchestrator.run_pipeline")
+def test_auto_publish_runs_after_pipeline_when_enabled(mock_run_pipeline, mock_publication_cls, scheduler, mock_db, monkeypatch):
+    monkeypatch.setattr(settings, "SCHEDULER_AUTO_PUBLISH_ENABLED", True)
+    monkeypatch.setattr(settings, "SCHEDULER_PUBLISH_LIMIT", 7)
+    mock_run_pipeline.return_value = {"status": "completed"}
+    mock_publisher = MagicMock()
+    mock_publication_cls.return_value = mock_publisher
+
+    scheduler.run_once(limit=5)
+
+    mock_publication_cls.assert_called_once_with(mock_db)
+    mock_publisher.publish_batch.assert_called_once_with(limit=7)
+
+
+@patch("app.services.scheduler_service.PublicationService")
+@patch("app.services.scheduler_service.PipelineOrchestrator.run_pipeline")
+def test_auto_publish_skipped_on_dry_run(mock_run_pipeline, mock_publication_cls, scheduler, monkeypatch):
+    monkeypatch.setattr(settings, "SCHEDULER_AUTO_PUBLISH_ENABLED", True)
+    mock_run_pipeline.return_value = {"status": "completed", "dry_run": True}
+
+    scheduler.run_once(dry_run=True)
+
+    mock_publication_cls.assert_not_called()
+
+
+@patch("app.services.scheduler_service.PublicationService")
+@patch("app.services.scheduler_service.PipelineOrchestrator.run_pipeline")
+def test_auto_publish_failure_does_not_fail_run_once(mock_run_pipeline, mock_publication_cls, scheduler, monkeypatch):
+    monkeypatch.setattr(settings, "SCHEDULER_AUTO_PUBLISH_ENABLED", True)
+    mock_run_pipeline.return_value = {"status": "completed"}
+    mock_publication_cls.return_value.publish_batch.side_effect = Exception("Telegram down")
+
+    summary = scheduler.run_once(limit=5)
+
+    assert summary["status"] == "completed"

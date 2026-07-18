@@ -4,9 +4,10 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 from app.config import settings
-from app.database.models import ModerationQueue, ModerationDecisionLog, ModerationQueueStatus, ItemAnalysis, AnalysisStatus
+from app.database.models import ModerationQueue, ModerationDecisionLog, ModerationQueueStatus, ItemAnalysis, AnalysisStatus, ItemStatus
 from app.database.repositories import ModerationQueueRepository, ModerationDecisionLogRepository, ItemRepository, AnalysisRepository
 from app.pipeline.moderation_rules import evaluate_item_moderation, MODERATION_RULES_VERSION
+from app.pipeline.moderation_state_machine import is_transition_allowed
 from app.llm.schemas import ModerationDecisionResult
 
 logger = logging.getLogger(__name__)
@@ -18,6 +19,53 @@ class ModerationService:
         self.log_repo = ModerationDecisionLogRepository(db)
         self.item_repo = ItemRepository(db)
         self.analysis_repo = AnalysisRepository(db)
+
+    def _apply_auto_decision(self, queue_item: ModerationQueue, item, result: ModerationDecisionResult) -> None:
+        """
+        Auto-approve or auto-reject a queue item based on the rule outcome, without human review.
+        Gated by MODERATION_AUTO_DECISION_ENABLED (default off) so this is opt-in per deployment.
+        """
+        if not getattr(settings, "MODERATION_AUTO_DECISION_ENABLED", False):
+            return
+
+        decision_str = str(getattr(result.decision, "value", result.decision))
+        if decision_str == "blocked":
+            target_status = ModerationQueueStatus.rejected
+            item_status = ItemStatus.rejected
+            action = "auto_reject"
+            reason = f"Auto-rejected by policy: blocked by moderation rules ({', '.join(result.blocking_reasons)})"
+        else:
+            target_status = ModerationQueueStatus.approved
+            item_status = ItemStatus.approved
+            action = "auto_approve"
+            reason = f"Auto-approved by policy: decision={decision_str}, score={result.decision_score}"
+
+        if not is_transition_allowed(queue_item.queue_status, target_status):
+            logger.warning(
+                "moderation_auto_decision_transition_blocked",
+                extra={"queue_id": queue_item.id, "from_status": str(queue_item.queue_status), "to_status": str(target_status)},
+            )
+            return
+
+        previous_status = queue_item.queue_status
+        queue_item.queue_status = target_status
+        queue_item.reviewed_by = "system-auto-policy"
+        queue_item.reviewed_at = func.now()
+        item.status = item_status
+        self.db.add(ModerationDecisionLog(
+            queue_id=queue_item.id,
+            previous_status=previous_status,
+            new_status=target_status,
+            action=action,
+            actor="system-auto-policy",
+            reason=reason,
+            metadata_json=result.decision_reasons,
+        ))
+        self.db.commit()
+        logger.info(
+            "moderation_auto_decision_applied",
+            extra={"queue_id": queue_item.id, "item_id": item.id, "action": action, "target_status": str(target_status)},
+        )
 
     def moderate_analysis(self, analysis_id: int, force_recalculate: bool = False, force_reason: Optional[str] = None) -> Optional[ModerationDecisionResult]:
         """
@@ -137,6 +185,7 @@ class ModerationService:
                 "priority": str(result.priority),
                 "decision_score": result.decision_score
             })
+            self._apply_auto_decision(existing, item, result)
         else:
             # Create new queue item
             queue_item = ModerationQueue(
@@ -172,6 +221,7 @@ class ModerationService:
                 "priority": str(result.priority),
                 "decision_score": result.decision_score
             })
+            self._apply_auto_decision(queue_item, item, result)
 
         return result
 

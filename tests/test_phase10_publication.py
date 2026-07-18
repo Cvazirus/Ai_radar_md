@@ -42,7 +42,7 @@ def test_format_telegram_text(service, mock_db):
     mock_db.query.return_value.filter.return_value.order_by.return_value.first.return_value = analysis
 
     text = service.format_telegram_text(item)
-    assert "📢 *New Model Release*" in text
+    assert "📢 <b>New Model Release</b>" in text
     assert "Новый релиз модели ИИ." in text
     assert "model_release" in text
     assert "8.50/10" in text
@@ -128,3 +128,25 @@ def test_item_id_and_limit_filters(MockTelegramPublisher, service, mock_db):
 
     stats_id = service.publish_batch(item_id=2)
     assert stats_id["processed"] == 1
+
+
+@patch("app.publishers.telegram.TelegramPublisher")
+def test_publication_sends_feedback_keyboard_and_persists_canonical_chat(MockTelegramPublisher, service, mock_db):
+    publisher = Mock()
+    publisher.chat_id = "-1009876543210"
+    publisher.send_html.return_value = TelegramResult(success=True, message_id=55)
+    MockTelegramPublisher.return_value = publisher
+    service.item_repo.get = MagicMock(return_value=None)
+    publication = Publication(item_id=7, telegram_text="<b>text</b>", status=PublicationStatus.ready)
+
+    assert service.publish_publication(publication) is True
+
+    markup = publisher.send_html.call_args.kwargs["reply_markup"]
+    buttons = [button for row in markup["inline_keyboard"] for button in row]
+    assert [button["text"] for button in buttons] == ["👍 Нравится", "👎 Неинтересно", "⭐ Избранное", "🗑 Скрыть"]
+    assert [button["callback_data"] for button in buttons] == [
+        "feedback:like:7", "feedback:dislike:7", "feedback:favorite:7", "feedback:hide:7",
+    ]
+    assert publication.telegram_channel_id is None
+    assert publication.telegram_chat_id == -1009876543210
+    assert publication.telegram_message_id == 55

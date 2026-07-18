@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 from typing import List, Optional
-from sqlalchemy import String, Integer, Boolean, DateTime, Float, ForeignKey, Enum, Text, Index, Numeric, CheckConstraint, UniqueConstraint
+from sqlalchemy import String, Integer, BigInteger, Boolean, DateTime, Float, ForeignKey, Enum, Text, Index, Numeric, CheckConstraint, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
@@ -234,7 +234,8 @@ class Publication(Base):
     )
     moderation_chat_id: Mapped[Optional[int]] = mapped_column(nullable=True)
     moderation_message_id: Mapped[Optional[int]] = mapped_column(nullable=True)
-    telegram_channel_id: Mapped[Optional[int]] = mapped_column(nullable=True)
+    telegram_channel_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    telegram_chat_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, index=True)
     telegram_message_id: Mapped[Optional[int]] = mapped_column(nullable=True)
     scheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -248,6 +249,63 @@ class Publication(Base):
     )
 
     item: Mapped["Item"] = relationship("Item", back_populates="publication")
+
+
+class UserFeedback(Base):
+    __tablename__ = "user_feedback"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    telegram_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    publication_id: Mapped[int] = mapped_column(ForeignKey("publications.item_id", ondelete="RESTRICT"), nullable=False)
+    reaction: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    is_favorite: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_hidden: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("telegram_user_id", "publication_id", name="uq_user_feedback_user_publication"),
+        CheckConstraint("reaction IS NULL OR reaction IN ('like', 'dislike')", name="ck_user_feedback_reaction"),
+        Index("ix_user_feedback_telegram_user_id", "telegram_user_id"),
+        Index("ix_user_feedback_publication_id", "publication_id"),
+        Index("ix_user_feedback_reaction", "reaction"),
+    )
+
+
+class UserPreference(Base):
+    __tablename__ = "user_preferences"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    telegram_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    preference_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    preference_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    weight: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    positive_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    negative_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("telegram_user_id", "preference_type", "preference_key", name="uq_user_preference_user_type_key"),
+        CheckConstraint("preference_type IN ('topic', 'source', 'entity', 'content_type')", name="ck_user_preference_type"),
+        Index("ix_user_preferences_telegram_user_id", "telegram_user_id"),
+        Index("ix_user_preferences_preference_type", "preference_type"),
+        Index("ix_user_preferences_preference_key", "preference_key"),
+    )
+
+
+class TelegramUpdateReceipt(Base):
+    __tablename__ = "telegram_update_receipts"
+
+    update_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    telegram_user_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    publication_id: Mapped[Optional[int]] = mapped_column(ForeignKey("publications.item_id", ondelete="SET NULL"), nullable=True)
+    processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_telegram_update_receipts_telegram_user_id", "telegram_user_id"),
+        Index("ix_telegram_update_receipts_publication_id", "publication_id"),
+    )
 
 class CollectionRun(Base):
     __tablename__ = "collection_runs"
@@ -362,4 +420,3 @@ class PipelineRun(Base):
     items_failed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     summary_json: Mapped[Optional[dict]] = mapped_column("summary", JSONB, nullable=True)
-

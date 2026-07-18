@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database.models import Source, PipelineRun, PipelineRunStatus
 from app.services.pipeline_orchestrator import PipelineOrchestrator
+from app.services.publication_service import PublicationService
 
 logger = structlog.get_logger()
 
@@ -100,6 +101,18 @@ class SchedulerService:
         except Exception as e:
             logger.error("scheduler_lock_release_failed", error=str(e))
 
+    def _auto_publish(self) -> None:
+        """Publish already-approved items after a pipeline run. Failures are logged, not raised,
+        so a Telegram/publication issue never takes down the scheduler loop."""
+        if not getattr(settings, "SCHEDULER_AUTO_PUBLISH_ENABLED", False):
+            return
+        try:
+            publish_limit = getattr(settings, "SCHEDULER_PUBLISH_LIMIT", 10)
+            stats = PublicationService(self.db).publish_batch(limit=publish_limit)
+            logger.info("scheduler_auto_publish_completed", stats=stats)
+        except Exception as e:
+            logger.error("scheduler_auto_publish_failed", error=str(e))
+
     def run_once(self, limit: int = 10, source_name: Optional[str] = None, dry_run: bool = False) -> Dict[str, Any]:
         """Запуск одного прохода пайплайна с контролем блокировок."""
         if not settings.SCHEDULER_ENABLED and not dry_run:
@@ -107,10 +120,10 @@ class SchedulerService:
             return {"status": "disabled"}
 
         logger.info("scheduler_run_started", limit=limit, source_name=source_name, dry_run=dry_run)
-        
+
         if not dry_run:
             self.acquire_lock()
-            
+
         try:
             summary = self.orchestrator.run_pipeline(
                 limit=limit,
@@ -118,6 +131,8 @@ class SchedulerService:
                 dry_run=dry_run
             )
             logger.info("scheduler_run_completed", status=summary.get("status"))
+            if not dry_run:
+                self._auto_publish()
             return summary
         except Exception as e:
             logger.error("scheduler_run_failed", error=str(e))

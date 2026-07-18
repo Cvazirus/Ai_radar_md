@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     SCHEDULER_MAX_PARALLEL_RUNS: int = Field(default=1)
     SCHEDULER_LOCK_TIMEOUT: int = Field(default=1800)
     SCHEDULER_DEFAULT_LIMIT: int = Field(default=10)
+    SCHEDULER_AUTO_PUBLISH_ENABLED: bool = Field(default=False)
+    SCHEDULER_PUBLISH_LIMIT: int = Field(default=10)
 
     @model_validator(mode="after")
     def validate_llm_settings(self):

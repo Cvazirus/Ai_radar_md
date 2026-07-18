@@ -19,13 +19,12 @@ ai-radar/
 │   ├── config.py            # Настройки конфигурации (Pydantic Settings)
 │   ├── logging_config.py    # Настройка structlog
 │   │
-│   ├── collectors/          # Модули сбора данных (RSS, GitHub, arXiv, Hugging Face)
+│   ├── collectors/          # Модули сбора данных (RSS, GitHub, arXiv, Hugging Face, Web)
 │   ├── pipeline/            # Этапы обработки данных (нормализация, дедупликация, рейтинг)
 │   ├── database/            # Модели БД, сессии и репозитории
 │   ├── llm/                 # Клиент и промпты для анализа через LLM
-│   ├── publishers/          # Модерация и публикация в Telegram
-│   ├── scheduler/           # Задачи по расписанию (APScheduler)
-│   └── services/            # Бизнес-логика приложения
+│   ├── publishers/          # Публикация в Telegram
+│   └── services/            # Бизнес-логика приложения (в т.ч. модерация и планировщик пайплайна)
 │
 ├── Dockerfile
 ├── docker-compose.yml
@@ -48,6 +47,8 @@ ai-radar/
    make up
    ```
    При старте `migrate` применяет миграции Alembic и заполняет таблицу источников из `config/news_sources.yaml` (редактирование этого файла и есть способ добавить/выключить источники — `scripts/seed_sources.py` читает именно его). После этого `scheduler` сам, без ручного запуска скриптов, каждые `SCHEDULER_INTERVAL_MINUTES` минут прогоняет пайплайн сбор → анализ → модерация. Публикация в Telegram и LLM-анализ включаются заданием `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHANNEL_ID` и `LLM_ANALYSIS_ENABLED=true` (+`LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL`) в `.env`.
+
+   В `news_sources.yaml` помимо `source_type: rss` поддерживаются `github` (поиск репозиториев через GitHub Search API, поле `query`), `arxiv` (arXiv Query API, поле `query`) и `huggingface` (Hugging Face Hub API). Для `web` (генерик-скрейпинг произвольного сайта через trafilatura, поле `url` — страница-листинг со ссылками на статьи) нужно вручную подобрать `link_selector` под конкретный сайт, поэтому таких источников в реестре по умолчанию нет.
 
 3. Проверьте работоспособность приложения (Health Check):
    ```bash

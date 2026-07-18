@@ -153,3 +153,26 @@ sources:
     enabled: true
     priority: 2
     tags: [russian, ai, articles]
+
+  # === API-based (не через RSS) ===
+  - id: github_search_llm_agents
+    name: GitHub Search — LLM Agents
+    url: https://github.com/search?q=llm+agent&type=repositories
+    query: "llm agent in:name,description stars:>50"
+    per_page: 15
+    language: en
+    source_type: github
+    enabled: true
+    priority: 2
+    tags: [open_source, github, agents]
+
+  - id: huggingface_new_models
+    name: Hugging Face — New Models
+    url: https://huggingface.co/models?sort=created
+    sort: createdAt
+    limit: 15
+    language: en
+    source_type: huggingface
+    enabled: true
+    priority: 2
+    tags: [open_source, models, huggingface]

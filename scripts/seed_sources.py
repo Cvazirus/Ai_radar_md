@@ -23,48 +23,75 @@ def _trust_level_from_priority(priority) -> int:
     return 1
 
 
+# Поля, специфичные для каждого source_type, и то, какое из них обязательно
+# (без него запись не имеет смысла и пропускается).
+_TYPE_FIELDS = {
+    "rss": (["feed_url"], []),
+    "github": (["query"], ["per_page", "sort", "order", "token"]),
+    "arxiv": (["query"], ["max_results"]),
+    "huggingface": ([], ["sort", "direction", "limit", "search"]),
+    "web": (["url"], ["link_selector", "link_pattern", "max_items"]),
+}
+
+
 def load_sources_from_yaml(path: str = SOURCES_YAML_PATH) -> list[dict]:
     """Читает реестр источников из config/news_sources.yaml и приводит
-    каждую запись к полям, ожидаемым моделью Source."""
+    каждую запись к полям, ожидаемым моделью Source. Набор полей в config
+    зависит от source_type (rss/github/arxiv/huggingface/web)."""
     with open(path, encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
 
     result = []
     for entry in raw.get("sources", []):
-        feed_url = entry.get("feed_url")
-        if not feed_url:
-            print(f"[SKIPPED] Source id='{entry.get('id')}': нет feed_url в yaml")
+        source_type = entry.get("source_type", "rss")
+        type_fields = _TYPE_FIELDS.get(source_type)
+        if type_fields is None:
+            print(f"[SKIPPED] Source id='{entry.get('id')}': неизвестный source_type='{source_type}'")
             continue
+
+        required_fields, optional_fields = type_fields
+        config = {
+            "slug": entry.get("id"),
+            "timeout_seconds": entry.get("timeout_seconds", 20),
+            "language": entry.get("language"),
+            "tags": entry.get("tags", []),
+            "enabled": bool(entry.get("enabled", True)),
+        }
+
+        missing = [f for f in required_fields if not entry.get(f)]
+        if missing:
+            print(f"[SKIPPED] Source id='{entry.get('id')}': отсутствуют поля {missing} в yaml")
+            continue
+
+        for f in required_fields + optional_fields:
+            if f in entry:
+                config[f] = entry[f]
 
         result.append({
             "name": entry.get("name") or entry["id"],
-            "source_type": entry.get("source_type", "rss"),
-            "base_url": entry.get("url") or feed_url,
+            "source_type": source_type,
+            "base_url": entry.get("url") or config.get("feed_url") or "",
             "enabled": bool(entry.get("enabled", True)),
             "trust_level": _trust_level_from_priority(entry.get("priority")),
-            "config": {
-                "slug": entry.get("id"),
-                "feed_url": feed_url,
-                "timeout_seconds": entry.get("timeout_seconds", 20),
-                "language": entry.get("language"),
-                "tags": entry.get("tags", []),
-                "enabled": bool(entry.get("enabled", True)),
-            },
+            "config": config,
         })
     return result
 
 
 def _find_existing(db, src_data: dict) -> Source | None:
-    # Основное совпадение: тип источника + feed_url (устойчиво даже при смене названия)
-    existing = db.query(Source).filter(
-        Source.source_type == src_data["source_type"],
-        Source.config["feed_url"].astext == src_data["config"]["feed_url"],
-    ).first()
-    if existing:
-        return existing
+    # Основное совпадение: тип источника + slug из yaml (устойчиво даже при
+    # смене названия/URL)
+    slug = src_data["config"].get("slug")
+    if slug:
+        existing = db.query(Source).filter(
+            Source.source_type == src_data["source_type"],
+            Source.config["slug"].astext == slug,
+        ).first()
+        if existing:
+            return existing
 
     # Запасное совпадение: по имени + типу (для записей, созданных до перехода
-    # на реестр из yaml)
+    # на реестр из yaml, когда slug ещё не был записан)
     return db.query(Source).filter(
         Source.name == src_data["name"],
         Source.source_type == src_data["source_type"],

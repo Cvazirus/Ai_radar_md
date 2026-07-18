@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     MODERATION_PRIORITY_MIN_CONFIDENCE: float = Field(default=0.75)
     MODERATION_BATCH_LIMIT: int = Field(default=50)
     MODERATION_ALLOW_LEGACY_ANALYSIS: bool = Field(default=False)
+    AUTO_APPROVAL_ENABLED: bool = Field(default=False)
 
     # Scheduler Config
     SCHEDULER_ENABLED: bool = Field(default=True)

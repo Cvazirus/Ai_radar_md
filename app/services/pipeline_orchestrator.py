@@ -8,19 +8,26 @@ from sqlalchemy import select, desc
 
 from app.database.models import (
     PipelineRun, PipelineRunStatus, Item, ItemStatus, ItemAnalysis,
-    AnalysisStatus, ModerationQueue, ModerationQueueStatus
+    AnalysisStatus, ModerationQueue, ModerationQueueStatus, ModerationDecision,
+    ModerationDecisionLog, Publication, PublicationStatus
 )
+from app.database.repositories import ModerationQueueRepository, ModerationDecisionLogRepository
+from app.pipeline.moderation_state_machine import is_transition_allowed
 from app.services.collection_service import CollectionService
 from app.services.analysis_service import AnalysisService
 from app.services.normalize_service import NormalizeService
 from app.services.validation_service import ValidationService
 from app.services.moderation_service import ModerationService
+from app.services.publication_service import PublicationService
+from app.config import settings
 
 logger = structlog.get_logger()
 
+AUTO_APPROVABLE_DECISIONS = (ModerationDecision.digest_candidate, ModerationDecision.priority_review)
+
 
 class PipelineOrchestrator:
-    STEPS = ["fetch", "normalize", "analysis", "validation", "moderation", "review"]
+    STEPS = ["fetch", "normalize", "analysis", "validation", "moderation", "approval", "publication"]
 
     def __init__(self, db: Session):
         self.db = db
@@ -219,8 +226,10 @@ class PipelineOrchestrator:
             return self._step_validation(limit, item_id)
         elif step_name == "moderation":
             return self._step_moderation(limit, item_id)
-        elif step_name == "review":
-            return self._step_review()
+        elif step_name == "approval":
+            return self._step_approval(limit, item_id)
+        elif step_name == "publication":
+            return self._step_publication(limit, item_id)
         else:
             return {"processed": 0, "skipped": 0, "failed": 0, "errors": []}
 
@@ -269,12 +278,27 @@ class PipelineOrchestrator:
                 count = query.count()
                 processed = min(count, limit) if count > 0 else 0
                 skipped = max(0, count - limit)
-            elif step_name == "review":
+            elif step_name == "approval":
                 query = self.db.query(ModerationQueue).filter(ModerationQueue.queue_status == ModerationQueueStatus.pending)
                 if item_id:
                     query = query.filter(ModerationQueue.item_id == item_id)
-                processed = query.count()
-                skipped = 0
+                count = query.count()
+                processed = min(count, limit) if count > 0 else 0
+                skipped = max(0, count - limit)
+            elif step_name == "publication":
+                approved_item_ids = select(ModerationQueue.item_id).where(
+                    ModerationQueue.queue_status.in_([ModerationQueueStatus.approved, ModerationQueueStatus.manual_review_approved])
+                )
+                published_item_ids = select(Publication.item_id).where(Publication.status == PublicationStatus.published)
+                query = self.db.query(Item).filter(
+                    Item.id.in_(approved_item_ids),
+                    ~Item.id.in_(published_item_ids)
+                )
+                if item_id:
+                    query = query.filter(Item.id == item_id)
+                count = query.count()
+                processed = min(count, limit) if count > 0 else 0
+                skipped = max(0, count - limit)
             else:
                 processed = 0
                 skipped = 0
@@ -361,6 +385,45 @@ class PipelineOrchestrator:
             "errors": []
         }
 
-    def _step_review(self) -> Dict[str, Any]:
-        count = self.db.query(ModerationQueue).filter(ModerationQueue.queue_status == ModerationQueueStatus.pending).count()
-        return {"processed": count, "skipped": 0, "failed": 0, "errors": []}
+    def _step_approval(self, limit: int, item_id: Optional[int]) -> Dict[str, Any]:
+        queue_repo = ModerationQueueRepository(self.db)
+        log_repo = ModerationDecisionLogRepository(self.db)
+
+        query = self.db.query(ModerationQueue).filter(ModerationQueue.queue_status == ModerationQueueStatus.pending)
+        if item_id:
+            query = query.filter(ModerationQueue.item_id == item_id)
+        pending_items = query.limit(limit).all()
+
+        processed = 0
+        skipped = 0
+        for queue_item in pending_items:
+            if settings.AUTO_APPROVAL_ENABLED and queue_item.decision in AUTO_APPROVABLE_DECISIONS:
+                prev_status = queue_item.queue_status
+                target_status = ModerationQueueStatus.approved
+                if not is_transition_allowed(prev_status, target_status):
+                    skipped += 1
+                    continue
+                queue_repo.update_status(queue_item.id, target_status, reviewer="auto")
+                log_repo.create(ModerationDecisionLog(
+                    queue_id=queue_item.id,
+                    previous_status=prev_status,
+                    new_status=target_status,
+                    action="auto_approve",
+                    actor="auto",
+                    reason=f"auto-approved: decision={queue_item.decision}"
+                ))
+                processed += 1
+            else:
+                skipped += 1
+
+        return {"processed": processed, "skipped": skipped, "failed": 0, "errors": []}
+
+    def _step_publication(self, limit: int, item_id: Optional[int]) -> Dict[str, Any]:
+        service = PublicationService(self.db)
+        stats = service.publish_batch(limit=limit, item_id=item_id)
+        return {
+            "processed": stats.get("processed", 0),
+            "skipped": stats.get("skipped", 0),
+            "failed": stats.get("failed", 0),
+            "errors": []
+        }

@@ -24,8 +24,8 @@ def _trust_level_from_priority(priority) -> int:
 
 
 def load_sources_from_yaml(path: str = SOURCES_YAML_PATH) -> list[dict]:
-    """Load the source registry from config/news_sources.yaml and map each
-    entry onto the fields expected by the Source model."""
+    """Читает реестр источников из config/news_sources.yaml и приводит
+    каждую запись к полям, ожидаемым моделью Source."""
     with open(path, encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
 
@@ -33,7 +33,7 @@ def load_sources_from_yaml(path: str = SOURCES_YAML_PATH) -> list[dict]:
     for entry in raw.get("sources", []):
         feed_url = entry.get("feed_url")
         if not feed_url:
-            print(f"[SKIPPED] Source id='{entry.get('id')}': no feed_url in yaml")
+            print(f"[SKIPPED] Source id='{entry.get('id')}': нет feed_url в yaml")
             continue
 
         result.append({
@@ -55,7 +55,7 @@ def load_sources_from_yaml(path: str = SOURCES_YAML_PATH) -> list[dict]:
 
 
 def _find_existing(db, src_data: dict) -> Source | None:
-    # Primary match: same source_type + feed_url (stable even if name changes)
+    # Основное совпадение: тип источника + feed_url (устойчиво даже при смене названия)
     existing = db.query(Source).filter(
         Source.source_type == src_data["source_type"],
         Source.config["feed_url"].astext == src_data["config"]["feed_url"],
@@ -63,8 +63,8 @@ def _find_existing(db, src_data: dict) -> Source | None:
     if existing:
         return existing
 
-    # Fallback match: same name + type (covers rows created before this
-    # migrated to the yaml-driven registry)
+    # Запасное совпадение: по имени + типу (для записей, созданных до перехода
+    # на реестр из yaml)
     return db.query(Source).filter(
         Source.name == src_data["name"],
         Source.source_type == src_data["source_type"],

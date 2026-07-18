@@ -19,8 +19,8 @@ services:
       timeout: 5s
       retries: 10
 
-  # One-off: applies Alembic migrations and seeds config/news_sources.yaml
-  # before app/scheduler are allowed to start.
+  # Разовый сервис: накатывает миграции Alembic и заполняет источники из
+  # config/news_sources.yaml, прежде чем разрешить старт app/scheduler.
   migrate:
     build: .
     container_name: ai_radar_migrate
@@ -55,9 +55,9 @@ services:
     volumes:
       - .:/app
 
-  # Runs the collect -> normalize -> analyze -> validate -> moderate pipeline
-  # on a loop (SCHEDULER_INTERVAL_MINUTES) so the bot actually produces
-  # content without any manual script invocation.
+  # Крутит пайплайн сбор -> нормализация -> анализ -> валидация -> модерация
+  # по кругу (раз в SCHEDULER_INTERVAL_MINUTES минут), чтобы бот реально
+  # производил контент без ручного запуска скриптов.
   scheduler:
     build: .
     container_name: ai_radar_scheduler

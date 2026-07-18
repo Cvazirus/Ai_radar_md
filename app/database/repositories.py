@@ -1,7 +1,7 @@
 from typing import List, Optional, Dict
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from app.database.models import Source, Item, ItemAnalysis, AnalysisStatus, Publication, CollectionRun, DuplicateRelation, RelationType, ModerationQueue, ModerationDecisionLog, ModerationQueueStatus, ModerationPriority, ModerationDecision
+from app.database.models import Source, Item, ItemAnalysis, AnalysisStatus, Publication, CollectionRun, DuplicateRelation, RelationType, ModerationQueue, ModerationDecisionLog, ModerationQueueStatus, ModerationPriority, ModerationDecision, UserFeedback, UserPreference, TelegramUpdateReceipt
 
 class SourceRepository:
     def __init__(self, db: Session):
@@ -151,6 +151,72 @@ class PublicationRepository:
             self.db.commit()
             return True
         return False
+
+
+class UserFeedbackRepository:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def get(self, telegram_user_id: int, publication_id: int) -> Optional[UserFeedback]:
+        return self.db.query(UserFeedback).filter(
+            UserFeedback.telegram_user_id == telegram_user_id,
+            UserFeedback.publication_id == publication_id,
+        ).first()
+
+    def save(self, feedback: UserFeedback) -> UserFeedback:
+        self.db.add(feedback)
+        return feedback
+
+    def list_for_user(self, telegram_user_id: int) -> List[UserFeedback]:
+        return self.db.query(UserFeedback).filter(
+            UserFeedback.telegram_user_id == telegram_user_id
+        ).all()
+
+    def list_favorites(self, telegram_user_id: int, limit: int = 100) -> List[UserFeedback]:
+        return self.db.query(UserFeedback).filter(
+            UserFeedback.telegram_user_id == telegram_user_id,
+            UserFeedback.is_favorite.is_(True),
+        ).order_by(UserFeedback.updated_at.desc()).limit(limit).all()
+
+
+class UserPreferenceRepository:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def list_for_user(self, telegram_user_id: int) -> List[UserPreference]:
+        return self.db.query(UserPreference).filter(
+            UserPreference.telegram_user_id == telegram_user_id
+        ).all()
+
+    def replace_for_user(self, telegram_user_id: int, preferences: List[UserPreference]) -> None:
+        self.db.query(UserPreference).filter(
+            UserPreference.telegram_user_id == telegram_user_id
+        ).delete(synchronize_session=False)
+        self.db.add_all(preferences)
+
+
+class TelegramUpdateReceiptRepository:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def get(self, update_id: int) -> Optional[TelegramUpdateReceipt]:
+        return self.db.query(TelegramUpdateReceipt).filter(
+            TelegramUpdateReceipt.update_id == update_id
+        ).first()
+
+    def create(
+        self,
+        update_id: int,
+        telegram_user_id: Optional[int] = None,
+        publication_id: Optional[int] = None,
+    ) -> TelegramUpdateReceipt:
+        receipt = TelegramUpdateReceipt(
+            update_id=update_id,
+            telegram_user_id=telegram_user_id,
+            publication_id=publication_id,
+        )
+        self.db.add(receipt)
+        return receipt
 
 
 class CollectionRunRepository:

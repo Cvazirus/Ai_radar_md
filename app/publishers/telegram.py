@@ -15,6 +15,7 @@ class TelegramResult:
     message_id: Optional[int] = None
     error: Optional[str] = None
     error_code: Optional[int] = None
+    data: Optional[Any] = None
 
 
 class TelegramPublisher:
@@ -61,14 +62,15 @@ class TelegramPublisher:
                 if response.status_code == 200:
                     result = response.json()
                     if result.get("ok"):
-                        msg_id = result.get("result", {}).get("message_id")
+                        response_data = result.get("result")
+                        msg_id = response_data.get("message_id") if isinstance(response_data, dict) else None
                         logger.info(
-                            "telegram_message_sent",
+                            "telegram_api_success",
                             method=method,
                             message_id=msg_id,
                             attempt=attempt + 1,
                         )
-                        return TelegramResult(success=True, message_id=msg_id)
+                        return TelegramResult(success=True, message_id=msg_id, data=response_data)
                     else:
                         error_desc = result.get("description", "Unknown error")
                         error_code = result.get("error_code")
@@ -177,6 +179,7 @@ class TelegramPublisher:
         chat_id: Optional[str] = None,
         parse_mode: Optional[str] = None,
         disable_web_page_preview: bool = True,
+        reply_markup: Optional[Dict[str, Any]] = None,
     ) -> TelegramResult:
         """Send a text message."""
         data = {
@@ -185,6 +188,8 @@ class TelegramPublisher:
             "parse_mode": parse_mode or self.parse_mode,
             "disable_web_page_preview": disable_web_page_preview,
         }
+        if reply_markup is not None:
+            data["reply_markup"] = reply_markup
         return self._request("sendMessage", data)
 
     def send_markdown(
@@ -192,18 +197,52 @@ class TelegramPublisher:
         text: str,
         chat_id: Optional[str] = None,
         disable_web_page_preview: bool = True,
+        reply_markup: Optional[Dict[str, Any]] = None,
     ) -> TelegramResult:
         """Send a Markdown-formatted message."""
-        return self.send_message(text, chat_id, "Markdown", disable_web_page_preview)
+        return self.send_message(text, chat_id, "Markdown", disable_web_page_preview, reply_markup)
 
     def send_html(
         self,
         text: str,
         chat_id: Optional[str] = None,
         disable_web_page_preview: bool = True,
+        reply_markup: Optional[Dict[str, Any]] = None,
     ) -> TelegramResult:
         """Send an HTML-formatted message."""
-        return self.send_message(text, chat_id, "HTML", disable_web_page_preview)
+        return self.send_message(text, chat_id, "HTML", disable_web_page_preview, reply_markup)
+
+    def answer_callback_query(self, callback_query_id: str, text: Optional[str] = None) -> TelegramResult:
+        data: Dict[str, Any] = {"callback_query_id": callback_query_id}
+        if text:
+            data["text"] = text[:200]
+        return self._request("answerCallbackQuery", data)
+
+    def edit_message_reply_markup(
+        self,
+        chat_id: int,
+        message_id: int,
+        reply_markup: Optional[Dict[str, Any]],
+    ) -> TelegramResult:
+        return self._request("editMessageReplyMarkup", {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "reply_markup": reply_markup,
+        })
+
+    def delete_message(self, chat_id: int, message_id: int) -> TelegramResult:
+        return self._request("deleteMessage", {"chat_id": chat_id, "message_id": message_id})
+
+    def get_updates(
+        self,
+        offset: Optional[int] = None,
+        timeout: int = 20,
+        limit: int = 100,
+    ) -> TelegramResult:
+        data: Dict[str, Any] = {"timeout": max(1, min(timeout, 50)), "limit": max(1, min(limit, 100))}
+        if offset is not None:
+            data["offset"] = offset
+        return self._request("getUpdates", data)
 
     def send_photo(
         self,

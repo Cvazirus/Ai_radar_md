@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str = Field(default="mock-token")
     TELEGRAM_MODERATION_CHAT_ID: str = Field(default="-1001234567890")
     TELEGRAM_CHANNEL_ID: str = Field(default="-1009876543210")
+    TELEGRAM_FEEDBACK_ENABLED: bool = Field(default=False)
+    TELEGRAM_ALLOWED_USER_IDS: str = Field(default="")
+    TELEGRAM_FEEDBACK_POLL_TIMEOUT_SECONDS: int = Field(default=20, ge=1, le=50)
+    TELEGRAM_FEEDBACK_BATCH_LIMIT: int = Field(default=100, ge=1, le=100)
+    TELEGRAM_FEEDBACK_CALLBACK_PREFIX: str = Field(default="feedback", min_length=1, max_length=32)
 
     # Moderation Config
     MODERATION_ENABLED: bool = Field(default=True)

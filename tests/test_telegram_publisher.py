@@ -120,6 +120,35 @@ class TestTelegramPublisher:
         call_data = publisher._client.post.call_args[1]["json"]
         assert call_data["parse_mode"] == "HTML"
 
+    def test_inline_callback_and_update_methods(self):
+        publisher = TelegramPublisher(bot_token="test", chat_id="-100")
+        response = Mock()
+        response.status_code = 200
+        response.json.side_effect = [
+            {"ok": True, "result": {"message_id": 1}},
+            {"ok": True, "result": True},
+            {"ok": True, "result": True},
+            {"ok": True, "result": True},
+            {"ok": True, "result": [{"update_id": 1}]},
+        ]
+        publisher._client.post = Mock(return_value=response)
+
+        markup = {"inline_keyboard": [[{"text": "Like", "callback_data": "feedback:like:1"}]]}
+        assert publisher.send_html("<b>Hi</b>", reply_markup=markup).success is True
+        assert publisher.answer_callback_query("callback").success is True
+        assert publisher.edit_message_reply_markup(-100, 2, markup).success is True
+        assert publisher.delete_message(-100, 2).success is True
+        updates = publisher.get_updates(offset=1, timeout=10, limit=5)
+
+        assert updates.success is True
+        assert updates.data == [{"update_id": 1}]
+        calls = [call.kwargs["json"] for call in publisher._client.post.call_args_list]
+        assert calls[0]["reply_markup"] == markup
+        assert calls[1]["callback_query_id"] == "callback"
+        assert calls[2]["chat_id"] == -100
+        assert calls[3]["message_id"] == 2
+        assert calls[4] == {"offset": 1, "timeout": 10, "limit": 5}
+
     def test_send_markdown(self):
         """send_markdown uses Markdown parse mode."""
         publisher = TelegramPublisher(bot_token="test", chat_id="-100")

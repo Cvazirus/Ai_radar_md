@@ -67,6 +67,28 @@ ai-radar/
    make down
    ```
 
+## Персональная обратная связь Telegram
+
+Обратная связь выключена по умолчанию. Для включения задайте в `.env` только нужные значения:
+
+```dotenv
+TELEGRAM_FEEDBACK_ENABLED=true
+TELEGRAM_ALLOWED_USER_IDS=123456789
+TELEGRAM_FEEDBACK_POLL_TIMEOUT_SECONDS=20
+TELEGRAM_FEEDBACK_BATCH_LIMIT=100
+TELEGRAM_FEEDBACK_CALLBACK_PREFIX=feedback
+```
+
+`TELEGRAM_ALLOWED_USER_IDS` - CSV из числовых Telegram user ID. Пустой список никому не разрешает запись. После миграции запустите long polling отдельным процессом:
+
+```bash
+python scripts/run_telegram_feedback.py
+python scripts/review_feedback.py --favorites 123456789
+python scripts/review_feedback.py --stats
+```
+
+Ручная проверка: опубликуйте тестовый материал, убедитесь в четырёх inline-кнопках, затем нажмите `Нравится`, `Неинтересно`, дважды `Избранное` и `Скрыть`. Проверьте, что `like` заменяется на `dislike`, избранное переключается, скрытие не удаляет запись feedback, а повторная доставка одного Telegram update не меняет состояние второй раз.
+
 ---
 
 ## Архитектурные решения (Этап 5.1)

@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from html import escape
 from typing import Optional, List, Dict, Any
 import structlog
 from sqlalchemy.orm import Session
@@ -6,6 +7,7 @@ from sqlalchemy import or_
 
 from app.database.models import Item, ItemStatus, ItemAnalysis, AnalysisStatus, Publication, PublicationStatus, ModerationQueue, ModerationQueueStatus
 from app.database.repositories import PublicationRepository, ItemRepository
+from app.config import settings
 
 logger = structlog.get_logger()
 
@@ -45,17 +47,30 @@ class PublicationService:
                 score_str = "0.00"
 
             return (
-                f"📢 *{item.title}*\n\n"
-                f"📝 {summary_ru}\n\n"
+                f"📢 <b>{escape(item.title)}</b>\n\n"
+                f"📝 {escape(summary_ru)}\n\n"
                 f"🏷 Категория: #{category}\n"
                 f"⭐️ Оценка: {score_str}/10\n"
-                f"🔗 Источник: {item.url}"
+                f"🔗 Источник: {escape(item.url or '')}"
             )
         else:
             return (
-                f"📢 *{item.title}*\n\n"
-                f"🔗 Источник: {item.url}"
+                f"📢 <b>{escape(item.title)}</b>\n\n"
+                f"🔗 Источник: {escape(item.url or '')}"
             )
+
+    def _feedback_keyboard(self, item_id: int) -> Dict[str, Any]:
+        prefix = settings.TELEGRAM_FEEDBACK_CALLBACK_PREFIX.rstrip(":")
+        return {"inline_keyboard": [
+            [
+                {"text": "👍 Нравится", "callback_data": f"{prefix}:like:{item_id}"},
+                {"text": "👎 Неинтересно", "callback_data": f"{prefix}:dislike:{item_id}"},
+            ],
+            [
+                {"text": "⭐ Избранное", "callback_data": f"{prefix}:favorite:{item_id}"},
+                {"text": "🗑 Скрыть", "callback_data": f"{prefix}:hide:{item_id}"},
+            ],
+        ]}
 
     def prepare_publication(self, item: Item, dry_run: bool = False) -> Publication:
         """Создать публикацию в статусе draft."""
@@ -96,7 +111,7 @@ class PublicationService:
         # Real Telegram publishing
         publisher = TelegramPublisher()
         try:
-            result = publisher.send_html(pub.telegram_text)
+            result = publisher.send_html(pub.telegram_text, reply_markup=self._feedback_keyboard(pub.item_id))
 
             if result.success:
                 logger.info(
@@ -108,6 +123,10 @@ class PublicationService:
                 pub.status = PublicationStatus.published
                 pub.published_at = datetime.now(timezone.utc)
                 pub.telegram_message_id = result.message_id
+                try:
+                    pub.telegram_chat_id = int(publisher.chat_id)
+                except (TypeError, ValueError):
+                    logger.warning("publication_chat_id_not_numeric", item_id=pub.item_id)
 
                 item = self.item_repo.get(pub.item_id)
                 if item:

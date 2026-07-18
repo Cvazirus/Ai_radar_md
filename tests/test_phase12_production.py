@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 from app.database.models import Item, ItemStatus, ItemAnalysis, AnalysisStatus, CategoryEnum, Source
 from app.services.digest_service import DigestService, SECTION_MAP, AI_KEYWORDS
 
-BASE = Path('/app')
+BASE = Path(__file__).resolve().parent.parent
 
 def _load_yaml(p):
     with open(p) as f:

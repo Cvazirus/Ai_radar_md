@@ -136,7 +136,7 @@ sources:
 
   - id: opennet_ai
     name: OpenNET AI
-    url:https://www.opennet.ru/cgi-bin/opennet/ks.cgi?mask=ai
+    url: https://www.opennet.ru/cgi-bin/opennet/ks.cgi?mask=ai
     feed_url: https://www.opennet.ru/cgi-bin/opennet/ks.cgi?mask=ai&rss=1
     language: ru
     source_type: rss

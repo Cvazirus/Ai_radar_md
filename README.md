@@ -47,6 +47,7 @@ ai-radar/
    make build
    make up
    ```
+   При старте `migrate` применяет миграции Alembic и заполняет таблицу источников из `config/news_sources.yaml` (редактирование этого файла и есть способ добавить/выключить источники — `scripts/seed_sources.py` читает именно его). После этого `scheduler` сам, без ручного запуска скриптов, каждые `SCHEDULER_INTERVAL_MINUTES` минут прогоняет пайплайн сбор → анализ → модерация. Публикация в Telegram и LLM-анализ включаются заданием `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHANNEL_ID` и `LLM_ANALYSIS_ENABLED=true` (+`LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL`) в `.env`.
 
 3. Проверьте работоспособность приложения (Health Check):
    ```bash

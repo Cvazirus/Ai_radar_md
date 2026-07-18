@@ -307,6 +307,38 @@ class TelegramUpdateReceipt(Base):
         Index("ix_telegram_update_receipts_publication_id", "publication_id"),
     )
 
+
+class TelegramModerationUpdateReceipt(Base):
+    __tablename__ = "telegram_moderation_update_receipts"
+
+    update_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    telegram_user_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    moderation_queue_id: Mapped[Optional[int]] = mapped_column(ForeignKey("moderation_queue.id", ondelete="SET NULL"), nullable=True)
+    processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    moderation_queue: Mapped[Optional["ModerationQueue"]] = relationship("ModerationQueue")
+
+    __table_args__ = (
+        Index("ix_telegram_moderation_update_receipts_telegram_user_id", "telegram_user_id"),
+        Index("ix_telegram_moderation_update_receipts_moderation_queue_id", "moderation_queue_id"),
+    )
+
+
+class TelegramModerationMessage(Base):
+    __tablename__ = "telegram_moderation_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    moderation_queue_id: Mapped[int] = mapped_column(ForeignKey("moderation_queue.id", ondelete="CASCADE"), nullable=False)
+    telegram_chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    telegram_message_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("telegram_chat_id", "telegram_message_id", name="uq_telegram_moderation_messages_chat_message"),
+        Index("ix_telegram_moderation_messages_queue_active", "moderation_queue_id", "is_active"),
+    )
+
 class CollectionRun(Base):
     __tablename__ = "collection_runs"
 
@@ -359,6 +391,9 @@ class ModerationQueue(Base):
     assigned_to: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     reviewed_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     review_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    telegram_chat_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    telegram_message_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    telegram_dispatch_started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     review_started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -380,6 +415,7 @@ class ModerationQueue(Base):
         Index("ix_moderation_queue_queued_at", "queued_at"),
         Index("ix_moderation_queue_item_id", "item_id"),
         Index("ix_moderation_queue_analysis_id", "analysis_id"),
+        UniqueConstraint("telegram_chat_id", "telegram_message_id", name="uq_moderation_queue_telegram_message"),
     )
 
 class ModerationDecisionLog(Base):

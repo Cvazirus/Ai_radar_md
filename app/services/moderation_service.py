@@ -1,10 +1,11 @@
 import logging
 import time
 from typing import List, Optional
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 from app.config import settings
-from app.database.models import ModerationQueue, ModerationDecisionLog, ModerationQueueStatus, ItemAnalysis, AnalysisStatus
+from app.database.models import ModerationQueue, ModerationDecisionLog, ModerationQueueStatus, ItemAnalysis, AnalysisStatus, TelegramModerationMessage
 from app.database.repositories import ModerationQueueRepository, ModerationDecisionLogRepository, ItemRepository, AnalysisRepository
 from app.pipeline.moderation_rules import evaluate_item_moderation, MODERATION_RULES_VERSION
 from app.llm.schemas import ModerationDecisionResult
@@ -113,6 +114,14 @@ class ModerationService:
             existing.decision_reasons = result.decision_reasons
             existing.blocking_reasons = result.blocking_reasons
             existing.warnings = result.warnings
+            existing.telegram_chat_id = None
+            existing.telegram_message_id = None
+            existing.telegram_dispatch_started_at = None
+            self.db.execute(
+                update(TelegramModerationMessage)
+                .where(TelegramModerationMessage.moderation_queue_id == existing.id)
+                .values(is_active=False)
+            )
             existing.updated_at = func.now()
             self.db.add(existing)
             self.db.commit()

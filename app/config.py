@@ -37,6 +37,7 @@ class Settings(BaseSettings):
 
     # Telegram Config
     TELEGRAM_BOT_TOKEN: str = Field(default="mock-token")
+    TELEGRAM_MODERATION_BOT_TOKEN: str = Field(default="")
     TELEGRAM_MODERATION_CHAT_ID: str = Field(default="-1001234567890")
     TELEGRAM_CHANNEL_ID: str = Field(default="-1009876543210")
     TELEGRAM_FEEDBACK_ENABLED: bool = Field(default=False)
@@ -44,6 +45,11 @@ class Settings(BaseSettings):
     TELEGRAM_FEEDBACK_POLL_TIMEOUT_SECONDS: int = Field(default=20, ge=1, le=50)
     TELEGRAM_FEEDBACK_BATCH_LIMIT: int = Field(default=100, ge=1, le=100)
     TELEGRAM_FEEDBACK_CALLBACK_PREFIX: str = Field(default="feedback", min_length=1, max_length=32)
+    TELEGRAM_MODERATION_ENABLED: bool = Field(default=False)
+    TELEGRAM_MODERATION_ALLOWED_USER_IDS: str = Field(default="")
+    TELEGRAM_MODERATION_POLL_TIMEOUT_SECONDS: int = Field(default=20, ge=1, le=50)
+    TELEGRAM_MODERATION_BATCH_LIMIT: int = Field(default=100, ge=1, le=100)
+    TELEGRAM_MODERATION_CALLBACK_PREFIX: str = Field(default="moderation", min_length=1, max_length=32)
 
     # Moderation Config
     MODERATION_ENABLED: bool = Field(default=True)
@@ -65,7 +71,7 @@ class Settings(BaseSettings):
     SCHEDULER_DEFAULT_LIMIT: int = Field(default=10)
 
     @model_validator(mode="after")
-    def validate_llm_settings(self):
+    def validate_settings(self):
         if self.LLM_ANALYSIS_ENABLED:
             if not self.LLM_BASE_URL:
                 raise ValueError("LLM_BASE_URL is required when LLM_ANALYSIS_ENABLED is True")
@@ -73,6 +79,11 @@ class Settings(BaseSettings):
                 raise ValueError("LLM_API_KEY is required when LLM_ANALYSIS_ENABLED is True")
             if not self.LLM_MODEL:
                 raise ValueError("LLM_MODEL is required when LLM_ANALYSIS_ENABLED is True")
+        if self.TELEGRAM_MODERATION_ENABLED:
+            if not self.TELEGRAM_MODERATION_BOT_TOKEN.strip() or self.TELEGRAM_MODERATION_BOT_TOKEN == "mock-token":
+                raise ValueError("TELEGRAM_MODERATION_BOT_TOKEN is required when TELEGRAM_MODERATION_ENABLED is True")
+            if self.TELEGRAM_MODERATION_BOT_TOKEN == self.TELEGRAM_BOT_TOKEN:
+                raise ValueError("TELEGRAM_MODERATION_BOT_TOKEN must differ from TELEGRAM_BOT_TOKEN")
         return self
 
 settings = Settings()

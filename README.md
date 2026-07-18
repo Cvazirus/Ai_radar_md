@@ -2,6 +2,12 @@
 
 AI Radar — это сервис для автоматического сбора, анализа, фильтрации и публикации новостей в сфере ИИ (ИИ-агенты, MCP-серверы, новые LLM, arxiv исследования, GitHub проекты, etc.) с предварительной модерацией через Telegram-бота.
 
+## Telegram moderation
+
+Set `TELEGRAM_MODERATION_ENABLED=true`, a dedicated `TELEGRAM_MODERATION_BOT_TOKEN`, `TELEGRAM_MODERATION_CHAT_ID`, and a comma-separated `TELEGRAM_MODERATION_ALLOWED_USER_IDS`; leave `TELEGRAM_MODERATION_CALLBACK_PREFIX=moderation`. The moderation token must differ from `TELEGRAM_BOT_TOKEN`, so its polling stream cannot compete with personal feedback. Run `python scripts/run_telegram_moderation.py` to dispatch pending moderation cards before every long-poll cycle and process their callbacks. The exact actions are `approve`, `reject`, `defer`, and `details` through `moderation:<action>:<queue_id>`. This workflow decides moderation only: it neither publishes material nor processes personal feedback, which remains a separate reader-feedback flow.
+
+Manual smoke test: publish one already-bound test queue to the moderation chat, press each button with an allowlisted account, and confirm that the callback is acknowledged, final actions remove the keyboard, and no Telegram post is published.
+
 ## Стек технологий
 - **Python 3.12+**
 - **FastAPI / Uvicorn** — веб-сервер и API

@@ -136,7 +136,7 @@ sources:
 
   - id: opennet_ai
     name: OpenNET AI
-    url:https://www.opennet.ru/cgi-bin/opennet/ks.cgi?mask=ai
+    url: https://www.opennet.ru/cgi-bin/opennet/ks.cgi?mask=ai
     feed_url: https://www.opennet.ru/cgi-bin/opennet/ks.cgi?mask=ai&rss=1
     language: ru
     source_type: rss
@@ -153,3 +153,54 @@ sources:
     enabled: true
     priority: 2
     tags: [russian, ai, articles]
+
+  # === International — added 2026-07-19, verified live ===
+  - id: techcrunch
+    name: TechCrunch
+    url: https://techcrunch.com
+    feed_url: https://techcrunch.com/feed/
+    language: en
+    source_type: rss
+    enabled: true
+    priority: 2
+    tags: [tech_news, startups]
+
+  - id: wired
+    name: WIRED
+    url: https://www.wired.com
+    feed_url: https://www.wired.com/feed/rss
+    language: en
+    source_type: rss
+    enabled: true
+    priority: 2
+    tags: [tech_news]
+
+  - id: arstechnica
+    name: Ars Technica
+    url: https://arstechnica.com
+    feed_url: https://feeds.arstechnica.com/arstechnica/index
+    language: en
+    source_type: rss
+    enabled: true
+    priority: 2
+    tags: [tech_news]
+
+  - id: marktechpost
+    name: MarkTechPost
+    url: https://www.marktechpost.com
+    feed_url: https://www.marktechpost.com/feed/
+    language: en
+    source_type: rss
+    enabled: true
+    priority: 2
+    tags: [ai, research, news]
+
+  - id: kdnuggets
+    name: KDnuggets
+    url: https://www.kdnuggets.com
+    feed_url: https://www.kdnuggets.com/feed
+    language: en
+    source_type: rss
+    enabled: true
+    priority: 2
+    tags: [data_science, ml, ai]

@@ -46,10 +46,15 @@ ORIGINAL RESPONSE:
 ERRORS:
 {errors}
 
-You MUST fix ONLY the format/structural issues. Do NOT add new facts or change values.
-If an error is about invalid claim evidence, either replace evidence_text with an exact
-verbatim substring copied from SOURCE RAW CONTENT above, or remove that claim from
-source_claims. Do not guess evidence_text that is not a literal substring of SOURCE RAW CONTENT.
+Fix ONLY what the ERRORS above require. Do not change any field that isn't implicated
+by an error. Two kinds of errors need different fixes:
+- Format/structural errors: fix ONLY the format. Do not add new facts or change values.
+- Invalid claim evidence errors: this REQUIRES changing that claim. You MUST either
+  replace its evidence_text with a different, exact verbatim substring copied from
+  SOURCE RAW CONTENT above, or remove that claim from source_claims entirely.
+  Repeating the same evidence_text that was already rejected is not a valid fix and
+  will fail again. Never invent an evidence_text that is not a literal substring of
+  SOURCE RAW CONTENT -- when in doubt, remove the claim.
 Return ONLY a single valid JSON object. No markdown, no explanation, just the JSON.
 
 Required JSON schema:

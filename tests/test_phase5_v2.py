@@ -632,3 +632,53 @@ def test_repair_prompt_does_not_contradict_claim_fix_instruction():
     from app.llm.client import REPAIR_PROMPT
     assert "Repeating the same evidence_text" in REPAIR_PROMPT
     assert "this REQUIRES changing that claim" in REPAIR_PROMPT
+
+def test_repair_drops_still_unverifiable_claims_instead_of_failing():
+    # Live rerun (wiki-karpaty: ai-radar-pr14-deploy-rerun-report-2026-07-19.md)
+    # showed a residual case: item_id=2463 kept failing "Repair still has 1
+    # invalid claims" even with a corrected prompt, because the source text
+    # genuinely doesn't support the claim -- not a prompt bug. Discarding the
+    # whole analysis (category, scores, summary) over one unverifiable claim
+    # is wasteful; the claim should just be dropped and the rest kept.
+    mock_db = MagicMock()
+
+    with patch("app.services.analysis_service.settings") as mock_settings:
+        mock_settings.LLM_ANALYSIS_ENABLED = True
+        mock_settings.LLM_MODEL = "test-model"
+        mock_settings.LLM_PROMPT_VERSION = "test-v1"
+        mock_settings.LLM_ANALYSIS_VERSION = "1.0"
+        mock_settings.LLM_STORE_RAW_RESPONSE = True
+
+        from app.services.analysis_service import AnalysisService
+        service = AnalysisService(mock_db)
+        service.item_repo = MagicMock()
+        service.analysis_repo = MagicMock()
+        service.llm_client = MagicMock()
+        service.llm_client._load_system_prompt.return_value = "system prompt"
+
+        item = create_valid_mock_item()
+        item.raw_text = "OpenAI released GPT-5 today with major improvements."
+
+        first_response = _minimal_valid_result_json(source_claims=[{
+            "claim": "GPT-5 released",
+            "evidence_text": "totally fabricated quote not in source",
+            "evidence_type": "direct_quote",
+            "confidence": 0.9,
+        }])
+        # Repair still can't verify the claim -- model repeats the same
+        # unverifiable evidence_text rather than dropping it.
+        repair_response = _minimal_valid_result_json(source_claims=[{
+            "claim": "GPT-5 released",
+            "evidence_text": "totally fabricated quote not in source",
+            "evidence_type": "direct_quote",
+            "confidence": 0.9,
+        }])
+        service.llm_client.raw_completion.side_effect = [first_response, repair_response]
+
+        service.db.query.return_value.filter.return_value.first.return_value = None
+
+        service.analyze_single_item(item, force=True)
+
+        created_analysis = service.analysis_repo.create.call_args[0][0]
+        assert created_analysis.status == AnalysisStatus.success
+        assert created_analysis.source_claims == {"claims": []}

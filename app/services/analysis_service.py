@@ -98,7 +98,8 @@ class AnalysisService:
 
         if not force:
             existing = self.db.query(ItemAnalysis).filter(
-                ItemAnalysis.input_hash == input_hash
+                ItemAnalysis.input_hash == input_hash,
+                ItemAnalysis.status == AnalysisStatus.success,
             ).first()
             if existing:
                 logger.info("analysis_skipped_existing", item_id=item.id, input_hash=input_hash[:16], existing_status=str(existing.status))

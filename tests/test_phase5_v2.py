@@ -620,3 +620,15 @@ def test_repair_succeeds_when_second_attempt_drops_bad_claim():
 
         created_analysis = service.analysis_repo.create.call_args[0][0]
         assert created_analysis.status == AnalysisStatus.success
+
+def test_repair_prompt_does_not_contradict_claim_fix_instruction():
+    # Regression: an earlier version told the model "Do NOT ... change values"
+    # immediately followed by "replace evidence_text ... or remove that claim" --
+    # a direct contradiction that likely made models default to the more
+    # prominent "don't change values" instruction and repeat the same rejected
+    # evidence_text (observed live: 3/4 items still failed identically after
+    # raw_text was added to the prompt). The instruction to fix invalid claim
+    # evidence must not be undercut by a blanket "don't change values" rule.
+    from app.llm.client import REPAIR_PROMPT
+    assert "Repeating the same evidence_text" in REPAIR_PROMPT
+    assert "this REQUIRES changing that claim" in REPAIR_PROMPT

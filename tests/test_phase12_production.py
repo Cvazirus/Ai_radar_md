@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 from app.database.models import Item, ItemStatus, ItemAnalysis, AnalysisStatus, CategoryEnum, Source
 from app.services.digest_service import DigestService, SECTION_MAP, AI_KEYWORDS
 
-BASE = Path('/app')
+BASE = Path(__file__).resolve().parent.parent
 
 def _load_yaml(p):
     with open(p) as f:
@@ -33,8 +33,10 @@ def test_yaml_exists():
 def test_yaml_structure():
     d=_load_yaml(BASE/'config'/'news_sources.yaml')
     for s in d['sources']:
-        for f in ['id','name','feed_url','language','source_type','enabled']:
+        for f in ['id','name','language','source_type','enabled']:
             assert f in s
+        if s['source_type']=='rss':
+            assert 'feed_url' in s
 def test_international():
     d=_load_yaml(BASE/'config'/'news_sources.yaml')
     assert len([s for s in d['sources'] if s.get('language')=='en'])>=5

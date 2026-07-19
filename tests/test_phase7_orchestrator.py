@@ -64,7 +64,7 @@ def test_full_pipeline_run(
 ):
     # Setup mocks
     mock_col = MagicMock()
-    mock_col.run_rss_collection.return_value = {"items_created": 5, "items_skipped": 0, "sources_failed": 0}
+    mock_col.run_collection.return_value = {"items_created": 5, "items_skipped": 0, "sources_failed": 0}
     mock_col_service.return_value = mock_col
 
     mock_norm = MagicMock()
@@ -102,7 +102,7 @@ def test_pipeline_step_error_continuation(
 ):
     # If fetch step fails completely, the pipeline run status should be failed
     mock_col = MagicMock()
-    mock_col.run_rss_collection.side_effect = Exception("Fetch error")
+    mock_col.run_collection.side_effect = Exception("Fetch error")
     mock_col_service.return_value = mock_col
 
     summary = orchestrator.run_pipeline(to_step="fetch")

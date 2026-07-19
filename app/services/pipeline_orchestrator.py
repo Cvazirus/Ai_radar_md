@@ -231,7 +231,10 @@ class PipelineOrchestrator:
             
             if step_name == "fetch":
                 from app.database.models import Source
-                query = self.db.query(Source).filter(Source.source_type == "rss", Source.enabled == True)
+                from app.services.collection_service import SUPPORTED_SOURCE_TYPES
+                query = self.db.query(Source).filter(
+                    Source.source_type.in_(SUPPORTED_SOURCE_TYPES), Source.enabled == True
+                )
                 if only_source_name:
                     query = query.filter(Source.name == only_source_name)
                 count = query.count()
@@ -300,7 +303,7 @@ class PipelineOrchestrator:
         if item_id:
             return {"processed": 0, "skipped": 1, "failed": 0, "errors": []}
         service = CollectionService(self.db)
-        stats = service.run_rss_collection(only_source_name=only_source_name)
+        stats = service.run_collection(only_source_name=only_source_name)
         return {
             "processed": stats.get("items_created", 0),
             "skipped": stats.get("items_skipped", 0),

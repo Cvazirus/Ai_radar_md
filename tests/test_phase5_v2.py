@@ -1,5 +1,6 @@
 import pytest
 import hashlib
+import json
 from unittest.mock import MagicMock, patch
 from datetime import datetime, timezone
 
@@ -523,3 +524,99 @@ def test_migration_does_not_lose_data():
         content = f.read().lower()
         assert "drop table item_analysis" not in content
         assert "drop table if exists item_analysis" not in content
+
+
+# === REPAIR PROMPT MUST INCLUDE SOURCE TEXT (fix for silent repair failures) ===
+
+def _minimal_valid_result_json(source_claims=None):
+    return json.dumps({
+        "category": "news", "tags": [], "entities": [],
+        "summary_ru": "Тестовое описание материала",
+        "target_users": [],
+        "is_primary_source": True, "is_promotional": False,
+        "is_actionable": True, "is_newsworthy": True,
+        "source_claims": source_claims or [],
+        "uncertainties": [], "novelty_score": 7, "practicality_score": 6,
+        "credibility_score": 7, "relevance_score": 8, "confidence": 0.85
+    })
+
+def test_repair_prompt_includes_raw_source_text():
+    # Regression: the repair round-trip previously only sent back the model's own
+    # invalid JSON + error list, never the original article text. That made it
+    # impossible for the model to fix a bad evidence_text (it has nothing to quote
+    # from), so repair silently failed claim validation again.
+    mock_db = MagicMock()
+
+    with patch("app.services.analysis_service.settings") as mock_settings:
+        mock_settings.LLM_ANALYSIS_ENABLED = True
+        mock_settings.LLM_MODEL = "test-model"
+        mock_settings.LLM_PROMPT_VERSION = "test-v1"
+        mock_settings.LLM_ANALYSIS_VERSION = "1.0"
+        mock_settings.LLM_STORE_RAW_RESPONSE = True
+
+        from app.services.analysis_service import AnalysisService
+        service = AnalysisService(mock_db)
+        service.item_repo = MagicMock()
+        service.analysis_repo = MagicMock()
+        service.llm_client = MagicMock()
+        service.llm_client._load_system_prompt.return_value = "system prompt"
+
+        item = create_valid_mock_item()
+        item.raw_text = "OpenAI released GPT-5 today with major improvements."
+
+        first_response = _minimal_valid_result_json(source_claims=[{
+            "claim": "GPT-5 released",
+            "evidence_text": "totally fabricated quote not in source",
+            "evidence_type": "direct_quote",
+            "confidence": 0.9,
+        }])
+        repair_response = _minimal_valid_result_json(source_claims=[])
+        service.llm_client.raw_completion.side_effect = [first_response, repair_response]
+
+        service.db.query.return_value.filter.return_value.first.return_value = None
+
+        service.analyze_single_item(item, force=True)
+
+        assert service.llm_client.raw_completion.call_count == 2
+        repair_messages = service.llm_client.raw_completion.call_args_list[1][0][0]
+        repair_user_content = repair_messages[1]["content"]
+        assert item.raw_text in repair_user_content
+
+def test_repair_succeeds_when_second_attempt_drops_bad_claim():
+    # With the source text available during repair, a model that corrects itself
+    # by dropping the unverifiable claim should now succeed instead of being
+    # marked invalid_response.
+    mock_db = MagicMock()
+
+    with patch("app.services.analysis_service.settings") as mock_settings:
+        mock_settings.LLM_ANALYSIS_ENABLED = True
+        mock_settings.LLM_MODEL = "test-model"
+        mock_settings.LLM_PROMPT_VERSION = "test-v1"
+        mock_settings.LLM_ANALYSIS_VERSION = "1.0"
+        mock_settings.LLM_STORE_RAW_RESPONSE = True
+
+        from app.services.analysis_service import AnalysisService
+        service = AnalysisService(mock_db)
+        service.item_repo = MagicMock()
+        service.analysis_repo = MagicMock()
+        service.llm_client = MagicMock()
+        service.llm_client._load_system_prompt.return_value = "system prompt"
+
+        item = create_valid_mock_item()
+        item.raw_text = "OpenAI released GPT-5 today with major improvements."
+
+        first_response = _minimal_valid_result_json(source_claims=[{
+            "claim": "GPT-5 released",
+            "evidence_text": "totally fabricated quote not in source",
+            "evidence_type": "direct_quote",
+            "confidence": 0.9,
+        }])
+        repair_response = _minimal_valid_result_json(source_claims=[])
+        service.llm_client.raw_completion.side_effect = [first_response, repair_response]
+
+        service.db.query.return_value.filter.return_value.first.return_value = None
+
+        service.analyze_single_item(item, force=True)
+
+        created_analysis = service.analysis_repo.create.call_args[0][0]
+        assert created_analysis.status == AnalysisStatus.success

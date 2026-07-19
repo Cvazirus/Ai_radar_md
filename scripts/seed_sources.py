@@ -78,6 +78,67 @@ INITIAL_SOURCES = [
             "timeout_seconds": 20,
             "enabled": True
         }
+    },
+    # === Added 2026-07-19, verified live (HTTP 200, valid RSS, recent items) ===
+    {
+        "name": "TechCrunch",
+        "source_type": "rss",
+        "base_url": "https://techcrunch.com",
+        "enabled": True,
+        "trust_level": 2,
+        "config": {
+            "feed_url": "https://techcrunch.com/feed/",
+            "timeout_seconds": 20,
+            "enabled": True
+        }
+    },
+    {
+        "name": "WIRED",
+        "source_type": "rss",
+        "base_url": "https://www.wired.com",
+        "enabled": True,
+        "trust_level": 2,
+        "config": {
+            "feed_url": "https://www.wired.com/feed/rss",
+            "timeout_seconds": 20,
+            "enabled": True
+        }
+    },
+    {
+        "name": "Ars Technica",
+        "source_type": "rss",
+        "base_url": "https://arstechnica.com",
+        "enabled": True,
+        "trust_level": 2,
+        "config": {
+            "feed_url": "https://feeds.arstechnica.com/arstechnica/index",
+            "timeout_seconds": 20,
+            "enabled": True
+        }
+    },
+    {
+        "name": "MarkTechPost",
+        "source_type": "rss",
+        "base_url": "https://www.marktechpost.com",
+        "enabled": True,
+        "trust_level": 2,
+        "config": {
+            "feed_url": "https://www.marktechpost.com/feed/",
+            "timeout_seconds": 20,
+            "enabled": True
+        }
+    },
+    {
+        "name": "KDnuggets",
+        "source_type": "rss",
+        "base_url": "https://www.kdnuggets.com",
+        "enabled": True,
+        "trust_level": 2,
+        "config": {
+            "feed_url": "https://www.kdnuggets.com/feed",
+            "timeout_seconds": 20,
+            "enabled": True
+        }
     }
 ]
 

@@ -109,10 +109,13 @@ def evaluate_item_moderation(item, analysis, duplicate_relations: List = None) -
             blocking_reasons.append("high_uncertainty")
             break
 
-    # Rule: primary source conflict
+    # Rule: primary source conflict — recorded as a warning, not a hard block. The rule_value only
+    # recognizes a small allowlist of vendor domains (openai.com, github.com, arxiv.org, etc.), so
+    # blocking on this would reject legitimate reporting from any other outlet (e.g. tech blogs)
+    # whenever the LLM reasonably marks it as a primary account of its own analysis.
     source_validation = validate_primary_source(getattr(item, "url", ""), getattr(analysis, "is_primary_source", False))
     if source_validation.conflict:
-        blocking_reasons.append("primary_source_conflict")
+        warnings.append("primary_source_conflict")
 
     # Rule: untrusted source and not confirmed by primary source
     source_trust = 1

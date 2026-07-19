@@ -37,6 +37,9 @@ class LLMProviderError(LLMError):
 
 REPAIR_PROMPT = """You previously returned an invalid JSON response. Here is your original response and the errors found:
 
+SOURCE RAW CONTENT (for verifying evidence_text):
+{raw_text}
+
 ORIGINAL RESPONSE:
 {original_response}
 
@@ -44,6 +47,9 @@ ERRORS:
 {errors}
 
 You MUST fix ONLY the format/structural issues. Do NOT add new facts or change values.
+If an error is about invalid claim evidence, either replace evidence_text with an exact
+verbatim substring copied from SOURCE RAW CONTENT above, or remove that claim from
+source_claims. Do not guess evidence_text that is not a literal substring of SOURCE RAW CONTENT.
 Return ONLY a single valid JSON object. No markdown, no explanation, just the JSON.
 
 Required JSON schema:
@@ -196,6 +202,7 @@ class LLMClient:
     def repair_item(self, request: AnalysisRequest, original_response: str, errors: List[str]) -> AnalysisResult:
         system_prompt = self._load_system_prompt()
         repair_user = REPAIR_PROMPT.format(
+            raw_text=request.raw_text,
             original_response=original_response[:2000],
             errors="\n".join(f"- {e}" for e in errors),
             errors_list="\n".join(f"- {e}" for e in errors),

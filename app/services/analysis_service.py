@@ -271,6 +271,7 @@ class AnalysisService:
             system_prompt = self.llm_client._load_system_prompt()
             from app.llm.client import REPAIR_PROMPT
             repair_user = REPAIR_PROMPT.format(
+                raw_text=request.raw_text,
                 original_response=original_response[:2000],
                 errors="\n".join(f"- {e}" for e in errors),
                 errors_list="\n".join(f"- {e}" for e in errors),

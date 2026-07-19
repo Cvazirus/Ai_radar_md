@@ -97,6 +97,17 @@ def test_blocked_by_exact_duplicate():
     assert res.decision == ModerationDecision.blocked
     assert "exact_duplicate" in res.blocking_reasons
 
+def test_primary_source_conflict_is_a_warning_not_a_block():
+    # habr.com is not in the trusted-vendor allowlist, so llm_is_primary=True conflicts with
+    # the domain rule. This must not block an otherwise good, fresh, high-confidence item.
+    item = create_mock_item(url="https://habr.com/ru/articles/123456/")
+    analysis = create_mock_analysis(score=7.0)
+    analysis.is_primary_source = True
+    res = evaluate_item_moderation(item, analysis)
+    assert "primary_source_conflict" not in res.blocking_reasons
+    assert "primary_source_conflict" in res.warnings
+    assert res.decision != ModerationDecision.blocked
+
 # --- 2. Score Calculations & Bonuses/Penalties ---
 
 def test_archive_decision():

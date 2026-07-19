@@ -290,7 +290,12 @@ class AnalysisService:
 
             claim_result = validate_source_claims(raw_text=item.raw_text or item.title, claims=result.source_claims)
             if claim_result.invalid_claims:
-                raise ValueError(f"Repair still has {len(claim_result.invalid_claims)} invalid claims")
+                logger.warn(
+                    "repair_dropping_unverifiable_claims",
+                    item_id=item.id,
+                    dropped_count=len(claim_result.invalid_claims),
+                )
+                result.source_claims = claim_result.valid_claims
 
             source_result = validate_primary_source(url=item.url, llm_is_primary=result.is_primary_source)
             has_tech_claims = any(c.evidence_type in ("direct_quote", "explicit_statement") for c in result.source_claims)

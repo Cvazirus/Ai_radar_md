@@ -30,7 +30,7 @@ class AnalysisService:
     def analyze_batch(self, limit: int = 10, force: bool = False,
                       force_reason: Optional[str] = None,
                       only_source_id: Optional[int] = None) -> dict:
-        stats = {"total": 0, "success": 0, "failed": 0, "skipped": 0, "invalid": 0}
+        stats = {"total": 0, "success": 0, "failed": 0, "skipped": 0, "invalid": 0, "retries_exhausted": 0}
 
         if not settings.LLM_ANALYSIS_ENABLED:
             logger.info("llm_analysis_disabled_in_config")
@@ -54,6 +54,8 @@ class AnalysisService:
                 result = self.analyze_single_item(item, force=force, force_reason=force_reason)
                 if result == "skipped_existing":
                     stats["skipped"] += 1
+                elif result == "retries_exhausted":
+                    stats["retries_exhausted"] += 1
                 else:
                     stats["success"] += 1
             except Exception as e:
@@ -98,11 +100,27 @@ class AnalysisService:
 
         if not force:
             existing = self.db.query(ItemAnalysis).filter(
-                ItemAnalysis.input_hash == input_hash
+                ItemAnalysis.input_hash == input_hash,
+                ItemAnalysis.status == AnalysisStatus.success,
             ).first()
             if existing:
                 logger.info("analysis_skipped_existing", item_id=item.id, input_hash=input_hash[:16], existing_status=str(existing.status))
                 return "skipped_existing"
+
+            max_attempts = settings.LLM_ANALYSIS_MAX_ATTEMPTS
+            prior_attempts = self.db.query(ItemAnalysis).filter(
+                ItemAnalysis.input_hash == input_hash,
+                ItemAnalysis.status != AnalysisStatus.success,
+            ).count()
+            if prior_attempts >= max_attempts:
+                logger.warning(
+                    "analysis_retries_exhausted",
+                    item_id=item.id,
+                    input_hash=input_hash[:16],
+                    prior_attempts=prior_attempts,
+                    max_attempts=max_attempts,
+                )
+                return "retries_exhausted"
 
         analysis = ItemAnalysis(
             item_id=item.id,

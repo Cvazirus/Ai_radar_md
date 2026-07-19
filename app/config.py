@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     LLM_PROMPT_VERSION: str = Field(default="phase5-v1")
     LLM_ANALYSIS_VERSION: str = Field(default="1.0")
     LLM_SCORE_VERSION: str = Field(default="1.0")
+    LLM_ANALYSIS_MAX_ATTEMPTS: int = Field(default=3)
 
     # Telegram Config
     TELEGRAM_BOT_TOKEN: str = Field(default="mock-token")

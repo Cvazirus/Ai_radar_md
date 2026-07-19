@@ -682,3 +682,80 @@ def test_repair_drops_still_unverifiable_claims_instead_of_failing():
         created_analysis = service.analysis_repo.create.call_args[0][0]
         assert created_analysis.status == AnalysisStatus.success
         assert created_analysis.source_claims == {"claims": []}
+
+
+# === IDEMPOTENCY MUST ONLY SKIP ON A SUCCESSFUL PRIOR ANALYSIS (P0-4 audit fix) ===
+
+def test_idempotency_filter_requires_success_status():
+    # Regression: analyze_single_item used to skip re-analysis if ANY prior
+    # ItemAnalysis existed with the same input_hash -- including failed or
+    # invalid_response ones. That silently stuck a permanently-eligible item
+    # forever on normal (non-force) scheduler runs: analyze_batch re-selects
+    # it every tick (item.status stays collected/normalized on failure), but
+    # analyze_single_item would immediately return "skipped_existing" without
+    # ever retrying the LLM call. This contradicts the README's claim that
+    # skip only applies once a successful analysis exists.
+    mock_db = MagicMock()
+
+    with patch("app.services.analysis_service.settings") as mock_settings:
+        mock_settings.LLM_ANALYSIS_ENABLED = True
+        mock_settings.LLM_MODEL = "test-model"
+        mock_settings.LLM_PROMPT_VERSION = "test-v1"
+        mock_settings.LLM_ANALYSIS_VERSION = "1.0"
+        mock_settings.LLM_STORE_RAW_RESPONSE = True
+        mock_settings.LLM_ANALYSIS_MAX_ATTEMPTS = 3
+
+        from app.services.analysis_service import AnalysisService
+        service = AnalysisService(mock_db)
+        service.item_repo = MagicMock()
+        service.analysis_repo = MagicMock()
+        service.llm_client = MagicMock()
+        service.llm_client._load_system_prompt.return_value = "system prompt"
+
+        item = create_valid_mock_item()
+        item.raw_text = "OpenAI released GPT-5 today with major improvements."
+
+        service.db.query.return_value.filter.return_value.first.return_value = None
+        service.db.query.return_value.filter.return_value.count.return_value = 0
+        service.llm_client.raw_completion.side_effect = [_minimal_valid_result_json(source_claims=[])]
+
+        result = service.analyze_single_item(item, force=False)
+
+        assert result == "success"
+        filter_args = service.db.query.return_value.filter.call_args.args
+        filter_args_str = " ".join(str(a) for a in filter_args)
+        assert "status" in filter_args_str
+
+def test_analysis_gives_up_after_max_attempts_without_force():
+    # Unbounded retries would hit the LLM on every scheduler tick forever for
+    # a permanently-failing item. LLM_ANALYSIS_MAX_ATTEMPTS caps non-force
+    # retries: once that many non-success ItemAnalysis rows exist for the
+    # same input_hash, analyze_single_item gives up instead of calling the
+    # LLM again. --force still bypasses this entirely.
+    mock_db = MagicMock()
+
+    with patch("app.services.analysis_service.settings") as mock_settings:
+        mock_settings.LLM_ANALYSIS_ENABLED = True
+        mock_settings.LLM_MODEL = "test-model"
+        mock_settings.LLM_PROMPT_VERSION = "test-v1"
+        mock_settings.LLM_ANALYSIS_VERSION = "1.0"
+        mock_settings.LLM_STORE_RAW_RESPONSE = True
+        mock_settings.LLM_ANALYSIS_MAX_ATTEMPTS = 3
+
+        from app.services.analysis_service import AnalysisService
+        service = AnalysisService(mock_db)
+        service.item_repo = MagicMock()
+        service.analysis_repo = MagicMock()
+        service.llm_client = MagicMock()
+
+        item = create_valid_mock_item()
+        item.raw_text = "OpenAI released GPT-5 today with major improvements."
+
+        service.db.query.return_value.filter.return_value.first.return_value = None
+        service.db.query.return_value.filter.return_value.count.return_value = 3
+
+        result = service.analyze_single_item(item, force=False)
+
+        assert result == "retries_exhausted"
+        service.llm_client.raw_completion.assert_not_called()
+        service.analysis_repo.create.assert_not_called()

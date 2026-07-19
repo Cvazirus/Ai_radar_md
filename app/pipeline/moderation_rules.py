@@ -95,12 +95,16 @@ def evaluate_item_moderation(item, analysis, duplicate_relations: List = None) -
 
     # Rule: unconfirmed claims
     source_claims = getattr(analysis, "source_claims", []) or []
+    if isinstance(source_claims, dict) and "claims" in source_claims:
+        source_claims = source_claims["claims"]
     claims_validation = validate_source_claims(getattr(item, "raw_text", "") or getattr(item, "title", ""), source_claims)
     if len(claims_validation.invalid_claims) > 0:
         blocking_reasons.append("invalid_claims")
 
     # Rule: uncertainty severity=high by key fact
     uncertainties = getattr(analysis, "uncertainties", []) or []
+    if isinstance(uncertainties, dict) and "uncertainties" in uncertainties:
+        uncertainties = uncertainties["uncertainties"]
     has_high_uncertainty = False
     for u in uncertainties:
         severity = u.get("severity") if isinstance(u, dict) else getattr(u, "severity", "")

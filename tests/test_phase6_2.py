@@ -300,3 +300,91 @@ def test_claim_validation_fabricated():
     claims = [SourceClaim(claim="test", evidence_text="completely made up", evidence_type="inference", confidence=0.5)]
     result = validate_source_claims("OpenAI released GPT-5", claims)
     assert len(result.invalid_claims) == 1
+
+
+# === DB-SHAPED (WRAPPED) uncertainties / source_claims MUST BE UNWRAPPED ===
+
+def test_high_uncertainty_blocks_with_real_db_wrapped_shape():
+    # Regression: AnalysisService stores analysis.uncertainties as
+    # {"uncertainties": [...]} (see analysis_service.py), not a bare list.
+    # evaluate_item_moderation used to iterate the dict directly, which
+    # iterates its keys (a single string) instead of the uncertainty
+    # objects -- so "high" severity from real DB data never blocked anything.
+    item = MagicMock()
+    item.id = 1
+    item.title = "Test"
+    item.raw_text = "Test text with enough content for validation"
+    item.url = "http://test.com"
+    item.source = MagicMock()
+    item.source.name = "Test"
+    item.source.trust_level = 1
+    item.status = ItemStatus.collected
+    item.metadata_json = {}
+    item.published_at = None
+    item.collected_at = None
+
+    analysis = MagicMock()
+    analysis.status = AnalysisStatus.success
+    analysis.summary_ru = "Test summary"
+    analysis.confidence = 0.8
+    analysis.is_primary_source = True
+    analysis.is_promotional = False
+    analysis.category = CategoryEnum.news
+    analysis.novelty_score = 5
+    analysis.practicality_score = 5
+    analysis.credibility_score = 5
+    analysis.relevance_score = 7
+    analysis.total_score = 5.0
+    analysis.source_claims = {"claims": []}
+    analysis.uncertainties = {"uncertainties": [
+        {"field": "date", "reason": "unclear publish date", "severity": "high"}
+    ]}
+    analysis.what_is_new = "Something new"
+    analysis.practical_use = "Useful"
+    analysis.prompt_version = "phase5-v2"
+    analysis.input_hash = "abc123"
+
+    result = evaluate_item_moderation(item, analysis, [])
+    assert "high_uncertainty" in result.blocking_reasons
+
+def test_promotional_with_wrapped_valid_claims_not_blocked():
+    # Regression: same wrapped-shape bug affected has_tech_claims, so any
+    # promotional=true material was blocked by "promotional_without_evidence"
+    # even with a real, verifiable direct_quote claim.
+    item = MagicMock()
+    item.id = 1
+    item.title = "Test"
+    item.raw_text = "Our new product launches today with a 50% speed improvement."
+    item.url = "http://test.com"
+    item.source = MagicMock()
+    item.source.name = "Test"
+    item.source.trust_level = 1
+    item.status = ItemStatus.collected
+    item.metadata_json = {}
+    item.published_at = None
+    item.collected_at = None
+
+    analysis = MagicMock()
+    analysis.status = AnalysisStatus.success
+    analysis.summary_ru = "Test summary"
+    analysis.confidence = 0.8
+    analysis.is_primary_source = True
+    analysis.is_promotional = True
+    analysis.category = CategoryEnum.news
+    analysis.novelty_score = 5
+    analysis.practicality_score = 5
+    analysis.credibility_score = 5
+    analysis.relevance_score = 7
+    analysis.total_score = 5.0
+    analysis.source_claims = {"claims": [
+        {"claim": "50% speed improvement", "evidence_text": "50% speed improvement",
+         "evidence_type": "direct_quote", "confidence": 0.9}
+    ]}
+    analysis.uncertainties = {"uncertainties": []}
+    analysis.what_is_new = "Something new"
+    analysis.practical_use = "Useful"
+    analysis.prompt_version = "phase5-v2"
+    analysis.input_hash = "abc123"
+
+    result = evaluate_item_moderation(item, analysis, [])
+    assert "promotional_without_evidence" not in result.blocking_reasons

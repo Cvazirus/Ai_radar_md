@@ -47,6 +47,9 @@ ai-radar/
    make build
    make up
    ```
+   При старте контейнера `app` (`docker-entrypoint.sh`) автоматически выполняются, в таком порядке: ожидание готовности БД, `alembic upgrade head`, `python scripts/seed_sources.py`. Оба шага идемпотентны — безопасно выполняются на каждом старте/рестарте контейнера. Затем стартует `uvicorn`.
+
+   Это НЕ включает автоматически сбор новостей/анализ/публикацию — `docker compose up` поднимает только веб-сервис (`/health`) с уже готовой к работе схемой БД и списком источников. Сам конвейер (fetch → analysis → moderation → publication) запускается отдельно, вручную через `docker compose exec app python scripts/run_scheduler.py --once` (или `--daemon` — см. ниже про `SCHEDULER_AUTO_PUBLISH_ENABLED`), это осознанное решение, не включённое по умолчанию.
 
 3. Проверьте работоспособность приложения (Health Check):
    ```bash

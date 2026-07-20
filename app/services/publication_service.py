@@ -111,7 +111,11 @@ class PublicationService:
         # Real Telegram publishing
         publisher = TelegramPublisher()
         try:
-            result = publisher.send_html(pub.telegram_text, reply_markup=self._feedback_keyboard(pub.item_id))
+            result = publisher.send_html(
+                pub.telegram_text,
+                reply_markup=self._feedback_keyboard(pub.item_id),
+                disable_web_page_preview=False,
+            )
 
             if result.success:
                 logger.info(

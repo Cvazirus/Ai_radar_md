@@ -100,6 +100,16 @@ python scripts/review_feedback.py --stats
 
 По умолчанию выключено (`SCHEDULER_AUTO_PUBLISH_ENABLED=false`). При включении в `true`: после каждого прохода `PipelineOrchestrator` (fetch → normalize → analysis → validation → moderation → review) `SchedulerService` сам вызывает `PublicationService.publish_batch(limit=SCHEDULER_PUBLISH_LIMIT)` — то есть уже одобренные материалы (вручную или через `MODERATION_AUTO_DECISION_ENABLED`) реально уходят в Telegram-канал без отдельного запуска `scripts/run_publication.py`. В `--dry-run` пайплайна публикация не запускается. Ошибка публикации логируется и не прерывает шедулер — следующий цикл пройдёт как обычно.
 
+### Автоматический retry неудачных публикаций
+
+По умолчанию выключено (`SCHEDULER_PUBLISH_RETRY_ENABLED=false`). Без этого флага неудачная Telegram-публикация (`Publication.status=failed`) не повторяется автоматически — `publish_batch()` в обычном режиме пропускает материалы с уже существующей незавершённой публикацией (`reason=existing_unfinished_publication`), а `--retry-failed`/`retry_failed=True` нужно вызывать вручную (`scripts/run_publication.py --retry-failed`).
+
+При включении в `true` `SchedulerService._auto_publish()` после обычного `publish_batch()` дополнительно вызывает `publish_batch(retry_failed=True, max_retries=SCHEDULER_PUBLISH_MAX_RETRIES, retry_backoff_minutes=SCHEDULER_PUBLISH_RETRY_BACKOFF_MINUTES)`:
+- **`SCHEDULER_PUBLISH_MAX_RETRIES`** (по умолчанию `3`) — материал с `retry_count >= max_retries` больше не выбирается для авто-retry (защита от бесконечных повторных попыток на перманентно проваливающейся публикации).
+- **`SCHEDULER_PUBLISH_RETRY_BACKOFF_MINUTES`** (по умолчанию `15`) — материал не берётся в retry, пока не прошло столько минут с последнего изменения (`updated_at`) записи `Publication`.
+
+Каждая неудачная попытка (в том числе при ручном `--retry-failed`) увеличивает `Publication.retry_count` на 1. Ручной вызов `--retry-failed` через CLI по-прежнему не ограничен лимитом/backoff — это осознанный ручной запрос человека, ограничения применяются только к автоматическому вызову из шедулера.
+
 ---
 
 ## Архитектурные решения (Этап 5.1)

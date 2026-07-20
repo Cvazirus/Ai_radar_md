@@ -164,3 +164,38 @@ def test_auto_publish_failure_does_not_fail_run_once(mock_run_pipeline, mock_pub
     summary = scheduler.run_once(limit=5)
 
     assert summary["status"] == "completed"
+
+
+@patch("app.services.scheduler_service.PublicationService")
+@patch("app.services.scheduler_service.PipelineOrchestrator.run_pipeline")
+def test_auto_publish_retry_disabled_by_default(mock_run_pipeline, mock_publication_cls, scheduler, mock_db, monkeypatch):
+    monkeypatch.setattr(settings, "SCHEDULER_AUTO_PUBLISH_ENABLED", True)
+    monkeypatch.setattr(settings, "SCHEDULER_PUBLISH_RETRY_ENABLED", False)
+    mock_run_pipeline.return_value = {"status": "completed"}
+    mock_publisher = MagicMock()
+    mock_publication_cls.return_value = mock_publisher
+
+    scheduler.run_once(limit=5)
+
+    mock_publisher.publish_batch.assert_called_once()
+
+
+@patch("app.services.scheduler_service.PublicationService")
+@patch("app.services.scheduler_service.PipelineOrchestrator.run_pipeline")
+def test_auto_publish_retries_failed_when_enabled(mock_run_pipeline, mock_publication_cls, scheduler, mock_db, monkeypatch):
+    monkeypatch.setattr(settings, "SCHEDULER_AUTO_PUBLISH_ENABLED", True)
+    monkeypatch.setattr(settings, "SCHEDULER_PUBLISH_LIMIT", 7)
+    monkeypatch.setattr(settings, "SCHEDULER_PUBLISH_RETRY_ENABLED", True)
+    monkeypatch.setattr(settings, "SCHEDULER_PUBLISH_MAX_RETRIES", 3)
+    monkeypatch.setattr(settings, "SCHEDULER_PUBLISH_RETRY_BACKOFF_MINUTES", 15)
+    mock_run_pipeline.return_value = {"status": "completed"}
+    mock_publisher = MagicMock()
+    mock_publication_cls.return_value = mock_publisher
+
+    scheduler.run_once(limit=5)
+
+    assert mock_publisher.publish_batch.call_count == 2
+    mock_publisher.publish_batch.assert_any_call(limit=7)
+    mock_publisher.publish_batch.assert_any_call(
+        limit=7, retry_failed=True, max_retries=3, retry_backoff_minutes=15
+    )

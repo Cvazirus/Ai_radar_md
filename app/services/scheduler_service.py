@@ -108,8 +108,18 @@ class SchedulerService:
             return
         try:
             publish_limit = getattr(settings, "SCHEDULER_PUBLISH_LIMIT", 10)
-            stats = PublicationService(self.db).publish_batch(limit=publish_limit)
+            pub_service = PublicationService(self.db)
+            stats = pub_service.publish_batch(limit=publish_limit)
             logger.info("scheduler_auto_publish_completed", stats=stats)
+
+            if getattr(settings, "SCHEDULER_PUBLISH_RETRY_ENABLED", False):
+                retry_stats = pub_service.publish_batch(
+                    limit=publish_limit,
+                    retry_failed=True,
+                    max_retries=getattr(settings, "SCHEDULER_PUBLISH_MAX_RETRIES", 3),
+                    retry_backoff_minutes=getattr(settings, "SCHEDULER_PUBLISH_RETRY_BACKOFF_MINUTES", 15),
+                )
+                logger.info("scheduler_auto_publish_retry_completed", stats=retry_stats)
         except Exception as e:
             logger.error("scheduler_auto_publish_failed", error=str(e))
 

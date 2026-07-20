@@ -197,3 +197,20 @@ def test_retry_failed_applies_backoff_filter(service, mock_db):
     assert stats["resumed"] == 1
     applied_str = " ".join(str(a) for a in second_filter.call_args.args)
     assert "updated_at" in applied_str
+
+
+@patch("app.publishers.telegram.TelegramPublisher")
+def test_publish_publication_enables_link_preview_for_thumbnail(MockTelegramPublisher, service, mock_db):
+    # Telegram auto-generates a preview card (with the source article's og:image)
+    # for the first URL in the message text, but only when link previews aren't
+    # disabled. The message text already ends with the source URL, so simply not
+    # disabling the preview is enough to show a picture -- no scraping needed.
+    mock_publisher = Mock()
+    MockTelegramPublisher.return_value = mock_publisher
+    mock_publisher.send_html.return_value = TelegramResult(success=True, message_id=1)
+    service.item_repo.get = MagicMock(return_value=None)
+
+    pub = Publication(item_id=1, telegram_text="text with https://example.com/article", status=PublicationStatus.ready)
+
+    assert service.publish_publication(pub) is True
+    assert mock_publisher.send_html.call_args.kwargs["disable_web_page_preview"] is False

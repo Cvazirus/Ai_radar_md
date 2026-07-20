@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from html import escape
 from typing import Optional, List, Dict, Any
 import structlog
@@ -141,6 +141,7 @@ class PublicationService:
                     error_code=result.error_code,
                 )
                 pub.status = PublicationStatus.failed
+                pub.retry_count = (pub.retry_count or 0) + 1
                 self.db.commit()
                 return False
         finally:
@@ -153,8 +154,15 @@ class PublicationService:
         resume: bool = False,
         retry_failed: bool = False,
         dry_run: bool = False,
+        max_retries: Optional[int] = None,
+        retry_backoff_minutes: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Пакетная публикация утвержденных материалов."""
+        """Пакетная публикация утвержденных материалов.
+
+        max_retries/retry_backoff_minutes only apply when retry_failed=True. They are
+        None (unbounded, immediate) by default to preserve the manual --retry-failed
+        CLI behavior; the scheduler passes explicit caps for its automatic retries.
+        """
         stats = {"processed": 0, "failed": 0, "skipped": 0, "resumed": 0}
 
         logger.info(
@@ -164,6 +172,8 @@ class PublicationService:
             resume=resume,
             retry_failed=retry_failed,
             dry_run=dry_run,
+            max_retries=max_retries,
+            retry_backoff_minutes=retry_backoff_minutes,
         )
 
         publications_to_process = []
@@ -172,6 +182,11 @@ class PublicationService:
             query = self.db.query(Publication).filter(Publication.status == PublicationStatus.failed)
             if item_id:
                 query = query.filter(Publication.item_id == item_id)
+            if max_retries is not None:
+                query = query.filter(Publication.retry_count < max_retries)
+            if retry_backoff_minutes is not None:
+                cutoff = datetime.now(timezone.utc) - timedelta(minutes=retry_backoff_minutes)
+                query = query.filter(Publication.updated_at <= cutoff)
             publications_to_process = query.limit(limit).all()
             for p in publications_to_process:
                 logger.info("publication_resumed", item_id=p.item_id, previous_status="failed")

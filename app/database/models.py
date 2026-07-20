@@ -237,6 +237,7 @@ class Publication(Base):
     telegram_channel_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     telegram_chat_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, index=True)
     telegram_message_id: Mapped[Optional[int]] = mapped_column(nullable=True)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     scheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

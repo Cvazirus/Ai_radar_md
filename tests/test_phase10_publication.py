@@ -150,3 +150,50 @@ def test_publication_sends_feedback_keyboard_and_persists_canonical_chat(MockTel
     assert publication.telegram_channel_id is None
     assert publication.telegram_chat_id == -1009876543210
     assert publication.telegram_message_id == 55
+
+
+# === P1-1 AUDIT FIX: bounded, backoff-aware automatic retry of failed publications ===
+
+@patch("app.publishers.telegram.TelegramPublisher")
+def test_publish_publication_increments_retry_count_on_failure(MockTelegramPublisher, service, mock_db):
+    mock_publisher = Mock()
+    MockTelegramPublisher.return_value = mock_publisher
+    mock_publisher.send_html.return_value = TelegramResult(success=False, error="Failed", error_code=400)
+
+    pub = Publication(item_id=1, telegram_text="text", status=PublicationStatus.ready, retry_count=0)
+
+    assert service.publish_publication(pub) is False
+    assert pub.retry_count == 1
+
+    assert service.publish_publication(pub) is False
+    assert pub.retry_count == 2
+
+
+def test_retry_failed_applies_max_retries_filter(service, mock_db):
+    # Regression (P1-1 audit): retry_failed used to have no cap at all. Verify the
+    # query actually gets a "retry_count < max_retries" predicate, not just that
+    # some publications come back -- a mocked chain can't otherwise distinguish a
+    # real filter from a no-op.
+    pub = Publication(item_id=1, telegram_text="a", status=PublicationStatus.failed, retry_count=1)
+    second_filter = mock_db.query.return_value.filter.return_value.filter
+    second_filter.return_value.limit.return_value.all.return_value = [pub]
+
+    stats = service.publish_batch(retry_failed=True, max_retries=3)
+
+    assert stats["resumed"] == 1
+    applied_str = " ".join(str(a) for a in second_filter.call_args.args)
+    assert "retry_count" in applied_str
+
+
+def test_retry_failed_applies_backoff_filter(service, mock_db):
+    # Regression (P1-1 audit): retry_failed used to retry on every scheduler tick
+    # with no backoff. Verify the query gets an "updated_at <= cutoff" predicate.
+    pub = Publication(item_id=1, telegram_text="a", status=PublicationStatus.failed, retry_count=0)
+    second_filter = mock_db.query.return_value.filter.return_value.filter
+    second_filter.return_value.limit.return_value.all.return_value = [pub]
+
+    stats = service.publish_batch(retry_failed=True, retry_backoff_minutes=15)
+
+    assert stats["resumed"] == 1
+    applied_str = " ".join(str(a) for a in second_filter.call_args.args)
+    assert "updated_at" in applied_str
